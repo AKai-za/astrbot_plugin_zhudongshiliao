@@ -9,8 +9,16 @@ import traceback
 def error_catcher(func):
     async def wrapper(self, *args, **kwargs):
         try:
-            # 直接调用原始函数，让它自己处理生成器
-            return await func(self, *args, **kwargs)
+            # 调用原始函数
+            result = await func(self, *args, **kwargs)
+            # 检查结果是否是异步生成器
+            if hasattr(result, '__aiter__'):
+                # 如果是异步生成器，就异步迭代它
+                async for item in result:
+                    yield item
+            else:
+                # 如果不是异步生成器，就直接返回
+                return result
         except Exception as e:
             # 捕获错误
             error_message = f"{func.__name__} 方法执行失败: {str(e)}"
@@ -26,7 +34,7 @@ def error_catcher(func):
             for arg in args:
                 if isinstance(arg, AstrMessageEvent):
                     try:
-                        # 直接返回错误信息
+                        # 返回错误信息
                         yield arg.plain_result(f"操作失败: {str(e)}")
                     except Exception as yield_error:
                         logger.error(f"返回错误信息失败: {yield_error}")
