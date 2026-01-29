@@ -46,5 +46,11 @@
     "type": "string",
     "default": "【错误信息】\n方法: {method}\n错误: {error}\n\n【详细信息】\n{traceback}",
     "hint": "错误信息的显示格式，支持 {method}、{error}、{traceback} 占位符"
+  },
+  "report_status": {
+    "description": "是否在群里汇报发送状况",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，插件会在群里汇报发送成功或失败的状态"
   }
 }

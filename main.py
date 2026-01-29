@@ -10,7 +10,7 @@ import json
 import os
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.1.0")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.1.1")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -52,6 +52,7 @@ class MyPlugin(Star):
             "summary_count": 20,  # 总结消息数量
             "error_send_mode": "private",  # 错误信息发送方式：private（私聊）或 group（群聊）
             "error_format": "【错误信息】\n方法: {method}\n错误: {error}\n\n【详细信息】\n{traceback}",  # 错误信息格式
+            "report_status": True,  # 是否在群里汇报发送状况
             "group_message_history": {}  # 群消息历史
         }
         
@@ -167,14 +168,20 @@ class MyPlugin(Star):
             
             # 私聊发送总结
             sender_id = event.get_sender_id()
-            await self.send_private_message(sender_id, f"群消息总结：\n{summary}", event)
+            success = await self.send_private_message(sender_id, f"群消息总结：\n{summary}", event)
             
-            # 回复用户
-            yield event.plain_result("已将群消息总结发送到您的私聊")
+            # 根据发送结果回复用户
+            report_status = self.config.get("report_status", True)
+            if report_status:
+                if success:
+                    yield event.plain_result("已将群消息总结发送到您的私聊")
+                else:
+                    yield event.plain_result("发送私聊消息失败")
         except Exception as e:
             logger.error(f"处理总结请求失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "handle_summary_request", str(e), traceback.format_exc())
+            async for result in self.send_error_message(event, "handle_summary_request", str(e), traceback.format_exc()):
+                yield result
 
     async def handle_private_request(self, event: AstrMessageEvent):
         """处理私聊请求"""
@@ -183,14 +190,20 @@ class MyPlugin(Star):
             message_str = event.message_str
             
             # 发送私聊消息
-            await self.send_private_message(sender_id, f"您请求的私聊内容：\n{message_str}", event)
+            success = await self.send_private_message(sender_id, f"您请求的私聊内容：\n{message_str}", event)
             
-            # 回复用户
-            yield event.plain_result("已发送私聊消息")
+            # 根据发送结果回复用户
+            report_status = self.config.get("report_status", True)
+            if report_status:
+                if success:
+                    yield event.plain_result("已发送私聊消息")
+                else:
+                    yield event.plain_result("发送私聊消息失败")
         except Exception as e:
             logger.error(f"处理私聊请求失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "handle_private_request", str(e), traceback.format_exc())
+            async for result in self.send_error_message(event, "handle_private_request", str(e), traceback.format_exc()):
+                yield result
 
     async def generate_summary(self, message_history, count=20):
         """生成消息总结"""
@@ -216,6 +229,9 @@ class MyPlugin(Star):
             user_id: 目标用户ID
             message: 要发送的消息内容
             event: 可选的事件对象，用于获取平台信息
+            
+        Returns:
+            bool: 是否发送成功
         """
         # 使用 AstrBot 的消息发送API发送私聊消息
         try:
@@ -253,23 +269,22 @@ class MyPlugin(Star):
             
             if success:
                 logger.info(f"成功发送私聊消息到 {user_id}")
+                return True
             else:
                 logger.warning(f"发送私聊消息到 {user_id} 失败，可能平台不匹配")
+                return False
                 
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             # 转发错误信息
             await self.send_error_message(event, "send_private_message", str(e), traceback.format_exc())
+            return False
 
     async def send_error_message(self, event, method, error, traceback_str):
         """发送错误信息"""
         try:
             # 检查是否配置了私发ID
             private_send_id = self.config.get("private_send_id", "")
-            if not private_send_id:
-                # 如果没有配置私发ID，不发送错误信息
-                logger.warning("未配置私发ID，无法发送错误信息")
-                return
             
             # 生成错误信息
             error_info = self.config["error_format"].format(
@@ -281,9 +296,14 @@ class MyPlugin(Star):
             # 根据配置选择发送方式
             error_send_mode = self.config.get("error_send_mode", "private")
             
-            if error_send_mode == "private":
+            if error_send_mode == "private" and private_send_id:
                 # 私聊发送错误信息
-                await self.send_private_message(private_send_id, error_info)
+                success = await self.send_private_message(private_send_id, error_info)
+                if not success:
+                    # 如果私聊发送失败，发送到当前会话
+                    if event:
+                        yield event.plain_result(error_info)
+                        logger.info("私聊发送失败，已将错误信息发送到当前会话")
             elif error_send_mode == "group" and event:
                 # 群聊发送错误信息
                 group_id = event.get_group_id()
@@ -293,9 +313,15 @@ class MyPlugin(Star):
                     await self.context.send_message(origin, message_chain)
                     logger.info(f"已在群 {group_id} 中发送错误信息")
                 else:
-                    logger.warning(f"无法在群中发送错误信息，未找到群 {group_id} 的 unified_msg_origin")
+                    # 如果没有找到群的 unified_msg_origin，发送到当前会话
+                    yield event.plain_result(error_info)
+                    logger.info("未找到群的 unified_msg_origin，已将错误信息发送到当前会话")
+            elif event:
+                # 其他情况，发送到当前会话
+                yield event.plain_result(error_info)
+                logger.info("已将错误信息发送到当前会话")
             else:
-                logger.warning(f"未知的错误发送方式: {error_send_mode}")
+                logger.warning("无法发送错误信息：没有配置私发ID且没有事件对象")
                 
         except Exception as e:
             logger.error(f"发送错误信息失败: {e}")
@@ -316,12 +342,20 @@ class MyPlugin(Star):
             private_message = parts[2]
             
             # 发送私聊消息
-            await self.send_private_message(user_id, private_message, event)
-            yield event.plain_result(f"已向用户 {user_id} 发送私聊消息")
+            success = await self.send_private_message(user_id, private_message, event)
+            
+            # 根据发送结果回复用户
+            report_status = self.config.get("report_status", True)
+            if report_status:
+                if success:
+                    yield event.plain_result(f"已向用户 {user_id} 发送私聊消息")
+                else:
+                    yield event.plain_result("发送私聊消息失败")
         except Exception as e:
             logger.error(f"处理私聊指令失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "command_private", str(e), traceback.format_exc())
+            async for result in self.send_error_message(event, "command_private", str(e), traceback.format_exc()):
+                yield result
 
     # 自动私聊功能 - 基于关键词的被动私聊
     async def auto_private_message(self, event: AstrMessageEvent):
@@ -365,15 +399,24 @@ class MyPlugin(Star):
                 
                 # 私聊发送总结
                 sender_id = event.get_sender_id()
-                await self.send_private_message(sender_id, f"群 {group_id} 的消息总结：\n{summary}", event)
-                yield event.plain_result(f"已将群 {group_id} 的消息总结发送到您的私聊")
+                success = await self.send_private_message(sender_id, f"群 {group_id} 的消息总结：\n{summary}", event)
+                
+                # 根据发送结果回复用户
+                report_status = self.config.get("report_status", True)
+                if report_status:
+                    if success:
+                        yield event.plain_result(f"已将群 {group_id} 的消息总结发送到您的私聊")
+                    else:
+                        yield event.plain_result("发送私聊消息失败")
             else:
                 # 否则使用当前群
-                await self.handle_summary_request(event)
+                async for result in self.handle_summary_request(event):
+                    yield result
         except Exception as e:
             logger.error(f"处理总结指令失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "command_summary", str(e), traceback.format_exc())
+            async for result in self.send_error_message(event, "command_summary", str(e), traceback.format_exc()):
+                yield result
 
     # 设置私发ID指令
     @command("set_private_id")
