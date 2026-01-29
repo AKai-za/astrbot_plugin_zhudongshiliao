@@ -1,5 +1,4 @@
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
-from astrbot.api.event.filter import group_message, private_message, command
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import json
@@ -73,11 +72,11 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"保存配置文件失败: {e}")
 
-    # 监听群消息
-    @group_message()
-    async def on_group_message(self, event: AstrMessageEvent):
-        """监听群消息，记录消息历史，处理触发关键词"""
+    # 监听所有消息
+    async def on_message(self, event: AstrMessageEvent):
+        """监听所有消息，记录群消息历史，处理触发关键词"""
         try:
+            # 检查是否是群消息
             group_id = event.get_group_id()
             if group_id:
                 # 记录群消息历史
@@ -114,29 +113,19 @@ class MyPlugin(Star):
                 
                 # 处理自动私聊
                 await self.auto_private_message(event)
+            else:
+                # 处理私聊消息
+                user_id = event.get_sender_id()
+                message_str = event.message_str
+                logger.info(f"收到私聊消息 from {user_id}: {message_str}")
+                
+                # 这里可以添加私聊消息的处理逻辑
+                # 例如：处理用户的设置请求，处理用户的命令等
         except Exception as e:
-            logger.error(f"处理群消息失败: {e}")
+            logger.error(f"处理消息失败: {e}")
             # 转发错误信息给指定用户
             if self.config["error_target"]:
-                error_info = f"【错误信息】\n方法: on_group_message\n错误: {str(e)}\n\n【详细信息】\n{traceback.format_exc()}"
-                await self.send_private_message(self.config["error_target"], error_info)
-
-    # 监听私聊消息
-    @private_message()
-    async def on_private_message(self, event: AstrMessageEvent):
-        """监听私聊消息，处理用户请求"""
-        try:
-            user_id = event.get_sender_id()
-            message_str = event.message_str
-            logger.info(f"收到私聊消息 from {user_id}: {message_str}")
-            
-            # 这里可以添加私聊消息的处理逻辑
-            # 例如：处理用户的设置请求，处理用户的命令等
-        except Exception as e:
-            logger.error(f"处理私聊消息失败: {e}")
-            # 转发错误信息给指定用户
-            if self.config["error_target"]:
-                error_info = f"【错误信息】\n方法: on_private_message\n错误: {str(e)}\n\n【详细信息】\n{traceback.format_exc()}"
+                error_info = f"【错误信息】\n方法: on_message\n错误: {str(e)}\n\n【详细信息】\n{traceback.format_exc()}"
                 await self.send_private_message(self.config["error_target"], error_info)
 
     async def handle_summary_request(self, event: AstrMessageEvent):
@@ -217,7 +206,6 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], f"发送私聊消息失败: {e}")
 
     # 主动私聊指令
-    @command("private")
     async def command_private(self, event: AstrMessageEvent):
         """主动触发私聊，格式：/private <用户ID> <消息内容>"""
         try:
@@ -262,7 +250,6 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 群消息总结指令
-    @command("summary")
     async def command_summary(self, event: AstrMessageEvent):
         """手动触发群消息总结，格式：/summary [群ID]"""
         try:
@@ -297,7 +284,6 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 设置错误信息转发目标指令
-    @command("set_target")
     async def command_set_target(self, event: AstrMessageEvent):
         """设置错误信息转发目标，格式：/set_target <用户ID>"""
         try:
@@ -322,7 +308,6 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 查看配置指令
-    @command("config")
     async def command_config(self, event: AstrMessageEvent):
         """查看当前配置"""
         try:
