@@ -8,9 +8,10 @@ from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 import json
 import os
+import re
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.1.1")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.2.0")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -364,12 +365,47 @@ class MyPlugin(Star):
             user_id = event.get_sender_id()
             message_str = event.message_str
             
-            # 这里可以添加自动私聊的触发条件
-            # 例如：当用户发送特定关键词时，自动私聊用户
+            # 检查是否包含"私发"关键词
+            if "私发" in message_str:
+                # 尝试提取要发送的消息内容
+                # 支持多种格式：
+                # "幽幽，你私发'测试'这条消息给我"
+                # "私发 测试"
+                # "私发：测试"
+                
+                # 尝试匹配引号内的内容
+                quote_match = re.search(r'["''](.+?)["'']', message_str)
+                if quote_match:
+                    # 提取引号内的内容
+                    private_message = quote_match.group(1)
+                    logger.info(f"从引号中提取消息: {private_message}")
+                else:
+                    # 尝试匹配"私发"后面的内容
+                    # 去掉"私发"关键词
+                    remaining_text = message_str.replace("私发", "").strip()
+                    # 去掉常见的连接词
+                    remaining_text = re.sub(r'^(这条消息|给我|一下|一下给我|，|。|！|？|,|\.|!|\?)+', '', remaining_text)
+                    private_message = remaining_text.strip()
+                    logger.info(f"从文本中提取消息: {private_message}")
+                
+                # 如果提取到了消息内容，发送私聊
+                if private_message:
+                    success = await self.send_private_message(user_id, private_message, event)
+                    
+                    # 根据发送结果回复用户
+                    report_status = self.config.get("report_status", True)
+                    if report_status:
+                        if success:
+                            yield event.plain_result("已发送私聊消息")
+                        else:
+                            yield event.plain_result("发送私聊消息失败")
+                else:
+                    # 如果没有提取到消息内容，提示用户
+                    yield event.plain_result("请告诉我你要发送什么消息")
             
             # 示例：当用户发送 "你好" 时，自动私聊用户
-            if "你好" in message_str:
-                await self.send_private_message(user_id, "你好！我是自动私聊机器人，有什么可以帮助你的吗？", event)
+            elif "你好" in message_str:
+                await self.send_private_message(user_id, "你好！", event)
         except Exception as e:
             logger.error(f"处理自动私聊失败: {e}")
             # 转发错误信息
