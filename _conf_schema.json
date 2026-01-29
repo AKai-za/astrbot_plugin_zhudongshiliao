@@ -37,19 +37,9 @@
   },
   "error_send_mode": {
     "description": "错误信息发送方式",
-    "type": "select",
+    "type": "string",
     "default": "private",
-    "hint": "错误信息的发送方式：private（私聊）或 group（群聊）",
-    "options": [
-      {
-        "label": "私聊",
-        "value": "private"
-      },
-      {
-        "label": "群聊",
-        "value": "group"
-      }
-    ]
+    "hint": "错误信息的发送方式，可选值：private（私聊）或 group（群聊）"
   },
   "error_format": {
     "description": "错误信息格式",
