@@ -53,12 +53,12 @@
     "default": true,
     "hint": "开启后，插件会在群里汇报发送成功或失败的状态"
   },
-  "chat_provider": {
-    "description": "聊天模型提供商",
+  "summary_provider": {
+    "description": "总结模型提供商",
     "type": "string",
     "default": "",
     "_special": "select_provider",
-    "hint": "选择用于处理文本消息的AI模型"
+    "hint": "选择用于处理总结的AI模型"
   },
   "vision_provider": {
     "description": "视觉模型提供商",

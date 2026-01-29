@@ -11,11 +11,11 @@ import os
 import re
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.2.1")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.2.2")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.config_file = os.path.join(os.path.dirname(__file__), "config.json")
+        self.config_file = os.path.join(os.path.dirname(__file__), "config.json") 
         self.config = self._load_config()
         self.user_origins = {}  # 存储用户的 unified_msg_origin
         self.group_origins = {}  # 存储群的 unified_msg_origin
@@ -54,7 +54,7 @@ class MyPlugin(Star):
             "error_send_mode": "private",  # 错误信息发送方式：private（私聊）或 group（群聊）
             "error_format": "【错误信息】\n方法: {method}\n错误: {error}\n\n【详细信息】\n{traceback}",  # 错误信息格式
             "report_status": True,  # 是否在群里汇报发送状况
-            "chat_provider": "",  # 聊天模型提供商
+            "summary_provider": "",  # 总结模型提供商
             "vision_provider": "",  # 视觉模型提供商
             "private_prompt": "请根据用户的要求，将以下内容发送给用户：{content}",  # 私发提示词
             "summary_prompt": "请总结以下群消息，提取关键信息：{messages}",  # 总结提示词
@@ -131,13 +131,15 @@ class MyPlugin(Star):
                 message_str = event.message_str.lower()
                 for keyword in self.config["summary_keywords"]:
                     if keyword in message_str:
-                        await self.handle_summary_request(event)
+                        async for result in self.handle_summary_request(event):
+                            yield result
                         break
                 
                 # 检查是否触发私聊关键词
                 for keyword in self.config["private_keywords"]:
                     if keyword in message_str:
-                        await self.handle_private_request(event)
+                        async for result in self.handle_private_request(event):
+                            yield result
                         break
                 
                 # 处理自动私聊
@@ -285,6 +287,7 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             # 转发错误信息
+            await self.send_error_message(None, "send_private_message", str(e), traceback.format_exc())
             return False
 
     async def send_error_message(self, event, method, error, traceback_str):
@@ -307,10 +310,9 @@ class MyPlugin(Star):
                 # 私聊发送错误信息
                 success = await self.send_private_message(private_send_id, error_info)
                 if not success:
-                    # 如果私聊发送失败，发送到当前会话
-                    if event:
-                        return event.plain_result(error_info)
-                        logger.info("私聊发送失败，已将错误信息发送到当前会话")
+                    # 如果私聊发送失败，根据配置决定是否发送到当前会话
+                    # 只有当 error_send_mode 为 "group" 时才发送到群聊
+                    logger.info("私聊发送失败，根据配置不发送到当前会话")
             elif error_send_mode == "group" and event:
                 # 群聊发送错误信息
                 group_id = event.get_group_id()
@@ -373,7 +375,7 @@ class MyPlugin(Star):
             user_id = event.get_sender_id()
             message_str = event.message_str
             
-            # 检查是否包含"私发"关键词
+            # 检查是否包含"私发"关键词或自然语言模式
             if "私发" in message_str:
                 # 尝试提取要发送的消息内容
                 # 支持多种格式：
@@ -410,6 +412,17 @@ class MyPlugin(Star):
                 else:
                     # 如果没有提取到消息内容，提示用户
                     yield event.plain_result("请告诉我你要发送什么消息")
+            
+            # 检查是否包含总结相关的自然语言模式
+            elif any(keyword in message_str for keyword in ["总结", "汇总", "总结一下"]):
+                # 检查是否包含"发给我"、"私发"等关键词，表明需要私发总结
+                if any(pattern in message_str for pattern in ["发给我", "私发", "发给"]):
+                    # 触发总结并私发
+                    async for result in self.handle_summary_request(event):
+                        yield result
+                else:
+                    # 只是提到总结，不触发
+                    pass
             
             # 示例：当用户发送 "你好" 时，自动私聊用户
             elif "你好" in message_str:
