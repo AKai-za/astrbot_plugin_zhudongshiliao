@@ -11,7 +11,7 @@ import os
 import re
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.2.0")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.2.1")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -54,6 +54,10 @@ class MyPlugin(Star):
             "error_send_mode": "private",  # 错误信息发送方式：private（私聊）或 group（群聊）
             "error_format": "【错误信息】\n方法: {method}\n错误: {error}\n\n【详细信息】\n{traceback}",  # 错误信息格式
             "report_status": True,  # 是否在群里汇报发送状况
+            "chat_provider": "",  # 聊天模型提供商
+            "vision_provider": "",  # 视觉模型提供商
+            "private_prompt": "请根据用户的要求，将以下内容发送给用户：{content}",  # 私发提示词
+            "summary_prompt": "请总结以下群消息，提取关键信息：{messages}",  # 总结提示词
             "group_message_history": {}  # 群消息历史
         }
         
@@ -137,7 +141,8 @@ class MyPlugin(Star):
                         break
                 
                 # 处理自动私聊
-                await self.auto_private_message(event)
+                async for result in self.auto_private_message(event):
+                    yield result
             else:
                 # 处理私聊消息
                 message_str = event.message_str
@@ -148,7 +153,9 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "on_all_messages", str(e), traceback.format_exc())
+            result = await self.send_error_message(event, "on_all_messages", str(e), traceback.format_exc())
+            if result:
+                yield result
 
     async def handle_summary_request(self, event: AstrMessageEvent):
         """处理群消息总结请求"""
@@ -278,7 +285,6 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "send_private_message", str(e), traceback.format_exc())
             return False
 
     async def send_error_message(self, event, method, error, traceback_str):
@@ -287,11 +293,11 @@ class MyPlugin(Star):
             # 检查是否配置了私发ID
             private_send_id = self.config.get("private_send_id", "")
             
-            # 生成错误信息
+            # 生成错误信息（只包含简短信息，不包含完整 traceback）
             error_info = self.config["error_format"].format(
                 method=method,
                 error=error,
-                traceback=traceback_str
+                traceback=""  # 不显示完整 traceback，只显示简短错误信息
             )
             
             # 根据配置选择发送方式
@@ -303,7 +309,7 @@ class MyPlugin(Star):
                 if not success:
                     # 如果私聊发送失败，发送到当前会话
                     if event:
-                        yield event.plain_result(error_info)
+                        return event.plain_result(error_info)
                         logger.info("私聊发送失败，已将错误信息发送到当前会话")
             elif error_send_mode == "group" and event:
                 # 群聊发送错误信息
@@ -315,17 +321,18 @@ class MyPlugin(Star):
                     logger.info(f"已在群 {group_id} 中发送错误信息")
                 else:
                     # 如果没有找到群的 unified_msg_origin，发送到当前会话
-                    yield event.plain_result(error_info)
+                    return event.plain_result(error_info)
                     logger.info("未找到群的 unified_msg_origin，已将错误信息发送到当前会话")
             elif event:
                 # 其他情况，发送到当前会话
-                yield event.plain_result(error_info)
+                return event.plain_result(error_info)
                 logger.info("已将错误信息发送到当前会话")
             else:
                 logger.warning("无法发送错误信息：没有配置私发ID且没有事件对象")
                 
         except Exception as e:
             logger.error(f"发送错误信息失败: {e}")
+            return None
 
     # 主动私聊指令
     @command("private")
@@ -355,7 +362,8 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理私聊指令失败: {e}")
             # 转发错误信息
-            async for result in self.send_error_message(event, "command_private", str(e), traceback.format_exc()):
+            result = await self.send_error_message(event, "command_private", str(e), traceback.format_exc())
+            if result:
                 yield result
 
     # 自动私聊功能 - 基于关键词的被动私聊
@@ -409,7 +417,9 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理自动私聊失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "auto_private_message", str(e), traceback.format_exc())
+            result = await self.send_error_message(event, "auto_private_message", str(e), traceback.format_exc())
+            if result:
+                yield result
 
     # 群消息总结指令
     @command("summary")
@@ -475,7 +485,9 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理设置私发ID指令失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "command_set_private_id", str(e), traceback.format_exc())
+            result = await self.send_error_message(event, "command_set_private_id", str(e), traceback.format_exc())
+            if result:
+                yield result
 
     # 查看配置指令
     @command("config")
@@ -500,7 +512,9 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理配置指令失败: {e}")
             # 转发错误信息
-            await self.send_error_message(event, "command_config", str(e), traceback.format_exc())
+            result = await self.send_error_message(event, "command_config", str(e), traceback.format_exc())
+            if result:
+                yield result
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""

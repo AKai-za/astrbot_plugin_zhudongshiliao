@@ -52,5 +52,31 @@
     "type": "bool",
     "default": true,
     "hint": "开启后，插件会在群里汇报发送成功或失败的状态"
+  },
+  "chat_provider": {
+    "description": "聊天模型提供商",
+    "type": "string",
+    "default": "",
+    "_special": "select_provider",
+    "hint": "选择用于处理文本消息的AI模型"
+  },
+  "vision_provider": {
+    "description": "视觉模型提供商",
+    "type": "string",
+    "default": "",
+    "_special": "select_provider",
+    "hint": "选择用于处理图片消息的AI模型"
+  },
+  "private_prompt": {
+    "description": "私发提示词",
+    "type": "text",
+    "default": "请根据用户的要求，将以下内容发送给用户：{content}",
+    "hint": "当用户触发私发功能时使用的提示词模板，支持 {content} 占位符"
+  },
+  "summary_prompt": {
+    "description": "总结提示词",
+    "type": "text",
+    "default": "请总结以下群消息，提取关键信息：{messages}",
+    "hint": "当用户触发总结功能时使用的提示词模板，支持 {messages} 占位符"
   }
 }
