@@ -1,11 +1,12 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.event import AstrMessageEvent, MessageEventResult
+from astrbot.api.event.filter import group_message, private_message, command
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import json
 import os
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.0.0")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.0.3")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -73,7 +74,7 @@ class MyPlugin(Star):
             logger.error(f"保存配置文件失败: {e}")
 
     # 监听群消息
-    @filter("group")
+    @group_message()
     async def on_group_message(self, event: AstrMessageEvent):
         """监听群消息，记录消息历史，处理触发关键词"""
         try:
@@ -121,7 +122,7 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 监听私聊消息
-    @filter("private")
+    @private_message()
     async def on_private_message(self, event: AstrMessageEvent):
         """监听私聊消息，处理用户请求"""
         try:
@@ -216,7 +217,7 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], f"发送私聊消息失败: {e}")
 
     # 主动私聊指令
-    @filter("command", "private")
+    @command("private")
     async def command_private(self, event: AstrMessageEvent):
         """主动触发私聊，格式：/private <用户ID> <消息内容>"""
         try:
@@ -261,7 +262,7 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 群消息总结指令
-    @filter("command", "summary")
+    @command("summary")
     async def command_summary(self, event: AstrMessageEvent):
         """手动触发群消息总结，格式：/summary [群ID]"""
         try:
@@ -296,7 +297,7 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 设置错误信息转发目标指令
-    @filter("command", "set_target")
+    @command("set_target")
     async def command_set_target(self, event: AstrMessageEvent):
         """设置错误信息转发目标，格式：/set_target <用户ID>"""
         try:
@@ -321,7 +322,7 @@ class MyPlugin(Star):
                 await self.send_private_message(self.config["error_target"], error_info)
 
     # 查看配置指令
-    @filter("command", "config")
+    @command("config")
     async def command_config(self, event: AstrMessageEvent):
         """查看当前配置"""
         try:
