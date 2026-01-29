@@ -1,6 +1,6 @@
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
-from astrbot.api.event.filter import command
+from astrbot.api.event.filter import command, event_message_type, EventMessageType
 from astrbot.api import logger
 from astrbot.api.message_components import Plain
 from astrbot.api.event import MessageChain
@@ -157,7 +157,7 @@ class MyPlugin(Star):
             logger.error(f"保存配置文件失败: {e}")
 
     # 监听所有消息
-    @command("")
+    @event_message_type(EventMessageType.ALL)
     async def on_all_messages(self, event: AstrMessageEvent):
         """监听所有消息，记录群消息历史，处理触发关键词"""
         try:
