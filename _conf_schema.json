@@ -1,0 +1,32 @@
+{
+  "error_target": {
+    "description": "错误信息转发目标用户ID",
+    "type": "string",
+    "default": "",
+    "hint": "当插件发生错误时，错误信息会转发给此用户"
+  },
+  "summary_keywords": {
+    "description": "群消息总结触发关键词",
+    "type": "list",
+    "default": ["总结", "汇总", "总结一下"],
+    "hint": "当群消息中包含这些关键词时，会触发群消息总结"
+  },
+  "private_keywords": {
+    "description": "私聊触发关键词",
+    "type": "list",
+    "default": ["私聊", "私信"],
+    "hint": "当群消息中包含这些关键词时，会触发自动私聊"
+  },
+  "auto_summary": {
+    "description": "是否自动总结群消息",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，插件会自动定期总结群消息"
+  },
+  "summary_interval": {
+    "description": "自动总结间隔（秒）",
+    "type": "int",
+    "default": 300,
+    "hint": "自动总结群消息的时间间隔，单位为秒"
+  }
+}

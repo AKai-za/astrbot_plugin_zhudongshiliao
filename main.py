@@ -42,7 +42,25 @@ class MyPlugin(Star):
 
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        # 从 WebUI 读取配置
+        self._load_webui_config()
         logger.info("自动私聊插件初始化完成")
+
+    def _load_webui_config(self):
+        """从 WebUI 读取配置"""
+        try:
+            # 使用 context 获取 WebUI 配置
+            webui_config = self.context.get_config()
+            if webui_config:
+                logger.info("从 WebUI 加载配置成功")
+                # 合并 WebUI 配置和本地配置
+                for key, value in webui_config.items():
+                    if key != "group_message_history":  # 消息历史不从 WebUI 加载
+                        self.config[key] = value
+                # 保存合并后的配置
+                self._save_config(self.config)
+        except Exception as e:
+            logger.error(f"从 WebUI 加载配置失败: {e}")
 
     def _load_config(self):
         """加载配置文件"""
