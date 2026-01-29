@@ -4,11 +4,13 @@ from astrbot.api.event.filter import command
 from astrbot.api import logger
 from astrbot.api.message_components import Plain
 from astrbot.api.event import MessageChain
+from astrbot.core.platform.message_session import MessageSession
+from astrbot.core.platform.message_type import MessageType
 import json
 import os
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.0.7")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.0.9")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -195,7 +197,16 @@ class MyPlugin(Star):
         # 简单的总结逻辑，实际应用中可以调用AI进行更智能的总结
         summary = "最近的群消息：\n"
         for msg in message_history[-count:]:  # 根据配置总结指定数量的消息
-            summary += f"[{msg['sender']}] {msg['message']}\n"
+            # 限制每条消息的长度，避免消息过长
+            message_text = msg['message']
+            if len(message_text) > 100:
+                message_text = message_text[:100] + "..."
+            summary += f"[{msg['sender']}] {message_text}\n"
+        
+        # 限制总结总长度，避免消息过长导致发送超时
+        if len(summary) > 2000:
+            summary = summary[:2000] + "\n...(消息过长，已截断)"
+        
         return summary
 
     async def send_private_message(self, user_id, message):
@@ -211,54 +222,34 @@ class MyPlugin(Star):
                 user_id = private_send_id
                 logger.info(f"使用私发ID: {private_send_id}")
             
-            # 优先使用记录的 unified_msg_origin
-            if user_id in self.user_origins:
-                origin = self.user_origins[user_id]
-                logger.info(f"使用记录的 unified_msg_origin: {origin}")
-            else:
-                # 如果没有记录，尝试多种可能的 unified_msg_origin 格式
-                logger.warning(f"未找到用户 {user_id} 的 unified_msg_origin 记录，尝试常见格式")
-                
-                # 对于 NapCat (QQ)，私聊的 unified_msg_origin 格式通常是：private:<user_id>
-                # 或者可能是：private_<user_id> 或其他格式
-                
-                # 尝试多种可能的 unified_msg_origin 格式
-                possible_origins = [
-                    f"private:{user_id}",
-                    f"private_{user_id}",
-                    f"private-{user_id}",
-                    f"qq_private:{user_id}",
-                    f"qq_private_{user_id}",
-                    f"qq_private-{user_id}",
-                    str(user_id)
-                ]
-                
-                # 构建消息链
-                message_chain = MessageChain().message(message)
-                
-                # 尝试发送消息
-                for origin in possible_origins:
-                    try:
-                        await self.context.send_message(origin, message_chain)
-                        logger.info(f"成功发送私聊消息到 {origin}")
-                        # 记录成功的格式
-                        self.user_origins[user_id] = origin
-                        return
-                    except Exception as e:
-                        logger.debug(f"尝试使用 {origin} 发送失败: {e}")
-                        continue
-                
-                # 如果所有方式都失败，记录警告
-                logger.warning(f"无法发送私聊消息到 {user_id}，可能需要检查 unified_msg_origin 格式")
-                return
+            # 构建私聊消息会话
+            # MessageSession 格式: {platform_id}:{message_type}:{session_id}
+            # 对于 NapCat (QQ) 平台，私聊消息的格式是: qq:FriendMessage:{user_id}
+            # 注意：这里需要获取正确的 platform_id，通常是 "qq" 或 "napcat"
+            
+            # 尝试获取平台 ID
+            platform_id = "qq"  # 默认使用 qq 作为平台 ID
+            
+            # 构建私聊消息会话
+            session = MessageSession(
+                platform_name=platform_id,
+                message_type=MessageType.FRIEND_MESSAGE,
+                session_id=str(user_id)
+            )
+            
+            logger.info(f"构建私聊会话: {session}")
             
             # 构建消息链
             message_chain = MessageChain().message(message)
             
             # 发送消息
-            await self.context.send_message(origin, message_chain)
-            logger.info(f"成功发送私聊消息到 {origin}")
+            success = await self.context.send_message(session, message_chain)
             
+            if success:
+                logger.info(f"成功发送私聊消息到 {user_id}")
+            else:
+                logger.warning(f"发送私聊消息到 {user_id} 失败，可能平台不匹配")
+                
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             # 转发错误信息
