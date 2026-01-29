@@ -28,5 +28,11 @@
     "type": "int",
     "default": 300,
     "hint": "自动总结群消息的时间间隔，单位为秒"
+  },
+  "error_format": {
+    "description": "错误信息格式",
+    "type": "string",
+    "default": "【错误信息】\n方法: {method}\n错误: {error}\n\n【详细信息】\n{traceback}",
+    "hint": "错误信息的显示格式，支持 {method}、{error}、{traceback} 占位符"
   }
 }
