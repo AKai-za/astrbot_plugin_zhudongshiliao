@@ -10,7 +10,7 @@ import json
 import os
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.0.9")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.1.0")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -167,7 +167,7 @@ class MyPlugin(Star):
             
             # 私聊发送总结
             sender_id = event.get_sender_id()
-            await self.send_private_message(sender_id, f"群消息总结：\n{summary}")
+            await self.send_private_message(sender_id, f"群消息总结：\n{summary}", event)
             
             # 回复用户
             yield event.plain_result("已将群消息总结发送到您的私聊")
@@ -183,7 +183,7 @@ class MyPlugin(Star):
             message_str = event.message_str
             
             # 发送私聊消息
-            await self.send_private_message(sender_id, f"您请求的私聊内容：\n{message_str}")
+            await self.send_private_message(sender_id, f"您请求的私聊内容：\n{message_str}", event)
             
             # 回复用户
             yield event.plain_result("已发送私聊消息")
@@ -209,8 +209,14 @@ class MyPlugin(Star):
         
         return summary
 
-    async def send_private_message(self, user_id, message):
-        """发送私聊消息"""
+    async def send_private_message(self, user_id, message, event=None):
+        """发送私聊消息
+        
+        Args:
+            user_id: 目标用户ID
+            message: 要发送的消息内容
+            event: 可选的事件对象，用于获取平台信息
+        """
         # 使用 AstrBot 的消息发送API发送私聊消息
         try:
             logger.info(f"发送私聊消息到 {user_id}: {message}")
@@ -222,15 +228,15 @@ class MyPlugin(Star):
                 user_id = private_send_id
                 logger.info(f"使用私发ID: {private_send_id}")
             
+            # 获取平台 ID
+            platform_id = "qq"  # 默认使用 qq 作为平台 ID
+            if event:
+                # 如果提供了事件，使用事件的平台信息
+                platform_id = event.get_platform_id()
+                logger.info(f"使用事件平台ID: {platform_id}")
+            
             # 构建私聊消息会话
             # MessageSession 格式: {platform_id}:{message_type}:{session_id}
-            # 对于 NapCat (QQ) 平台，私聊消息的格式是: qq:FriendMessage:{user_id}
-            # 注意：这里需要获取正确的 platform_id，通常是 "qq" 或 "napcat"
-            
-            # 尝试获取平台 ID
-            platform_id = "qq"  # 默认使用 qq 作为平台 ID
-            
-            # 构建私聊消息会话
             session = MessageSession(
                 platform_name=platform_id,
                 message_type=MessageType.FRIEND_MESSAGE,
@@ -253,7 +259,7 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             # 转发错误信息
-            await self.send_error_message(None, "send_private_message", str(e), traceback.format_exc())
+            await self.send_error_message(event, "send_private_message", str(e), traceback.format_exc())
 
     async def send_error_message(self, event, method, error, traceback_str):
         """发送错误信息"""
@@ -310,7 +316,7 @@ class MyPlugin(Star):
             private_message = parts[2]
             
             # 发送私聊消息
-            await self.send_private_message(user_id, private_message)
+            await self.send_private_message(user_id, private_message, event)
             yield event.plain_result(f"已向用户 {user_id} 发送私聊消息")
         except Exception as e:
             logger.error(f"处理私聊指令失败: {e}")
@@ -329,7 +335,7 @@ class MyPlugin(Star):
             
             # 示例：当用户发送 "你好" 时，自动私聊用户
             if "你好" in message_str:
-                await self.send_private_message(user_id, "你好！我是自动私聊机器人，有什么可以帮助你的吗？")
+                await self.send_private_message(user_id, "你好！我是自动私聊机器人，有什么可以帮助你的吗？", event)
         except Exception as e:
             logger.error(f"处理自动私聊失败: {e}")
             # 转发错误信息
@@ -359,7 +365,7 @@ class MyPlugin(Star):
                 
                 # 私聊发送总结
                 sender_id = event.get_sender_id()
-                await self.send_private_message(sender_id, f"群 {group_id} 的消息总结：\n{summary}")
+                await self.send_private_message(sender_id, f"群 {group_id} 的消息总结：\n{summary}", event)
                 yield event.plain_result(f"已将群 {group_id} 的消息总结发送到您的私聊")
             else:
                 # 否则使用当前群
@@ -410,7 +416,7 @@ class MyPlugin(Star):
             
             # 发送配置信息给用户
             sender_id = event.get_sender_id()
-            await self.send_private_message(sender_id, config_info)
+            await self.send_private_message(sender_id, config_info, event)
             yield event.plain_result("已将当前配置发送到您的私聊")
         except Exception as e:
             logger.error(f"处理配置指令失败: {e}")
