@@ -1,9 +1,9 @@
 {
-  "error_target": {
-    "description": "错误信息转发目标用户ID",
+  "private_send_id": {
+    "description": "私发ID",
     "type": "string",
     "default": "",
-    "hint": "当插件发生错误时，错误信息会转发给此用户"
+    "hint": "所有私发消息都会发给这个ID（QQ号），包括群消息总结、错误信息等"
   },
   "summary_keywords": {
     "description": "群消息总结触发关键词",
@@ -28,6 +28,28 @@
     "type": "int",
     "default": 300,
     "hint": "自动总结群消息的时间间隔，单位为秒"
+  },
+  "summary_count": {
+    "description": "总结消息数量",
+    "type": "int",
+    "default": 20,
+    "hint": "每次总结时包含的消息数量，默认为20条"
+  },
+  "error_send_mode": {
+    "description": "错误信息发送方式",
+    "type": "select",
+    "default": "private",
+    "hint": "错误信息的发送方式：private（私聊）或 group（群聊）",
+    "options": [
+      {
+        "label": "私聊",
+        "value": "private"
+      },
+      {
+        "label": "群聊",
+        "value": "group"
+      }
+    ]
   },
   "error_format": {
     "description": "错误信息格式",
