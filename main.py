@@ -512,7 +512,7 @@ class MyPlugin(Star):
             logger.error(traceback.format_exc())
             return event.plain_result("处理私聊消息时发生错误，请稍后再试。")
 
-    @event_message_type(EventMessageType.PRIVATE)
+    @event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def on_private_message(self, event: AstrMessageEvent, *args, **kwargs):
         """处理私聊消息"""
         return await self.handle_private_forward(event)
