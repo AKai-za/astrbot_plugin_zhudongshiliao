@@ -62,24 +62,40 @@ class MyPlugin(Star):
     def get_realtime_config(self):
         """获取实时配置"""
         try:
+            # 只获取插件相关的配置，避免加载整个AstrBot配置
             webui_config = self.context.get_config()
             if webui_config:
-                logger.debug("获取WebUI实时配置")
+                # 插件相关的配置键列表
+                plugin_config_keys = [
+                    "admin_list", "private_keywords", "mention_patterns", 
+                    "summary_keywords", "report_keywords", "error_format", 
+                    "private_send_id", "enable_wake_word", "wake_words", 
+                    "enable_private_chat", "enable_summary", "enable_report"
+                ]
                 
-                # 确保admin_list存在且不为空
-                if "admin_list" not in webui_config:
-                    webui_config["admin_list"] = self.config.get("admin_list", ["2757808353"])
-                elif not webui_config["admin_list"]:
-                    webui_config["admin_list"] = ["2757808353"]
+                # 只处理插件相关的配置
+                plugin_specific_config = {}
+                for key in plugin_config_keys:
+                    if key in webui_config:
+                        plugin_specific_config[key] = webui_config[key]
                 
-                # 合并配置
-                merged_config = self.config.copy()
-                for key, value in webui_config.items():
-                    if key != "group_message_history":
-                        merged_config[key] = value
-                
-                logger.debug("配置合并完成")
-                return merged_config
+                if plugin_specific_config:
+                    logger.debug(f"获取到插件相关配置: {list(plugin_specific_config.keys())}")
+                    
+                    # 确保admin_list存在且不为空
+                    if "admin_list" not in plugin_specific_config:
+                        plugin_specific_config["admin_list"] = self.config.get("admin_list", ["2757808353"])
+                    elif not plugin_specific_config["admin_list"]:
+                        plugin_specific_config["admin_list"] = ["2757808353"]
+                    
+                    # 合并配置
+                    merged_config = self.config.copy()
+                    for key, value in plugin_specific_config.items():
+                        if key != "group_message_history":
+                            merged_config[key] = value
+                    
+                    logger.debug("插件配置合并完成")
+                    return merged_config
             
             logger.debug("使用本地配置")
             return self.config
@@ -613,7 +629,7 @@ class MyPlugin(Star):
             # 检查是否在被禁言的群中
             if group_id and group_id in self.muted_groups:
                 logger.info(f"群 {group_id} 已被禁言，忽略消息")
-                return MessageEventResult()
+                return
 
             # 获取实时配置
             config = self.get_realtime_config()
@@ -628,7 +644,7 @@ class MyPlugin(Star):
             # 检查是否需要唤醒词
             if enable_wake_word and group_id and not contains_wake_word:
                 logger.debug(f"消息不包含唤醒词，忽略")
-                return MessageEventResult().stop_event()
+                return
 
             # 检查是否启用汇报功能
             enable_report = config.get("enable_report", True)
@@ -646,7 +662,7 @@ class MyPlugin(Star):
             # 只有管理员可以触发其他功能
             if not self.is_admin(user_id):
                 logger.info(f"用户 {user_id} 不是管理员，忽略消息")
-                return MessageEventResult().stop_event()
+                return
             else:
                 logger.info(f"用户 {user_id} 是管理员，继续处理消息")
 
