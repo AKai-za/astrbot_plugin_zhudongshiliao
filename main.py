@@ -39,8 +39,7 @@ class MyPlugin(Star):
         try:
             webui_config = self.context.get_config()
             if webui_config:
-                logger.info("从WebUI加载配置成功")
-                logger.info(f"WebUI配置: {webui_config}")
+                logger.debug("从WebUI加载配置成功")
                 
                 # 确保admin_list存在且不为空
                 if "admin_list" not in webui_config:
@@ -53,7 +52,7 @@ class MyPlugin(Star):
                 
                 # 保存配置
                 self._save_config(self.config)
-                logger.info(f"保存后的配置: {self.config}")
+                logger.debug("配置同步完成")
             else:
                 logger.warning("WebUI配置为空")
         except Exception as e:
@@ -65,7 +64,7 @@ class MyPlugin(Star):
         try:
             webui_config = self.context.get_config()
             if webui_config:
-                logger.info(f"获取WebUI实时配置: {webui_config}")
+                logger.debug("获取WebUI实时配置")
                 
                 # 确保admin_list存在且不为空
                 if "admin_list" not in webui_config:
@@ -79,10 +78,10 @@ class MyPlugin(Star):
                     if key != "group_message_history":
                         merged_config[key] = value
                 
-                logger.info(f"合并后的实时配置: {merged_config}")
+                logger.debug("配置合并完成")
                 return merged_config
             
-            logger.info(f"使用本地配置: {self.config}")
+            logger.debug("使用本地配置")
             return self.config
         except Exception as e:
             logger.error(f"获取实时配置失败: {e}")
@@ -408,12 +407,20 @@ class MyPlugin(Star):
             await self.send_error_message(event, "handle_summary_request", str(e), traceback.format_exc())
 
     @event_message_type(EventMessageType.ALL)
-    async def on_all_messages(self, event, *args, **kwargs):
+    async def on_all_messages(self, *args, **kwargs):
         """处理所有消息"""
         try:
+            # 从参数中获取事件对象
+            event = None
+            for arg in args:
+                if arg and not isinstance(arg, MyPlugin):
+                    event = arg
+                    break
+            
             # 确保event是有效的消息事件对象
             if not event:
-                logger.error("事件对象为None")
+                logger.error("事件对象为None或无效")
+                logger.error(f"接收到的参数: {args}, {kwargs}")
                 return
             
             # 尝试获取用户ID
@@ -425,12 +432,17 @@ class MyPlugin(Star):
                     user_id = event.sender_id
                 elif hasattr(event, 'user_id'):
                     user_id = event.user_id
+                elif hasattr(event, 'user') and hasattr(event.user, 'id'):
+                    user_id = event.user.id
                 
                 if user_id is None:
                     logger.warning("获取到的用户ID为None")
+                    logger.warning(f"事件对象类型: {type(event)}")
+                    logger.warning(f"事件对象属性: {dir(event)}")
                     return
             except Exception as e:
                 logger.error(f"获取用户ID失败: {e}")
+                logger.error(traceback.format_exc())
                 return
             
             # 尝试获取消息内容
@@ -442,12 +454,15 @@ class MyPlugin(Star):
                     message_str = str(event.message)
                 elif hasattr(event, 'content'):
                     message_str = str(event.content)
+                elif hasattr(event, 'raw_message'):
+                    message_str = str(event.raw_message)
                 
                 if not message_str:
                     logger.warning("获取到的消息内容为空")
                     return
             except Exception as e:
                 logger.error(f"获取消息内容失败: {e}")
+                logger.error(traceback.format_exc())
                 return
             
             # 尝试获取群ID
@@ -457,8 +472,11 @@ class MyPlugin(Star):
                     group_id = event.get_group_id()
                 elif hasattr(event, 'group_id'):
                     group_id = event.group_id
+                elif hasattr(event, 'group') and hasattr(event.group, 'id'):
+                    group_id = event.group.id
             except Exception as e:
                 logger.error(f"获取群ID失败: {e}")
+                logger.error(traceback.format_exc())
             
             logger.info(f"收到消息: 用户 {user_id}, 内容: '{message_str}', 群: {group_id}")
 
