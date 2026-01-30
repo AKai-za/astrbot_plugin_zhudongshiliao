@@ -126,8 +126,22 @@ class MyPlugin(Star):
                 )
                 # 发送LLM请求
                 response = await self.context.llm_request(request)
-                return response.content
-            return ""
+                logger.debug(f"大模型调用成功，响应长度: {len(response.content) if response else 0}")
+                return response.content if response else ""
+            else:
+                # 即使没有event，也尝试使用默认方式调用大模型
+                try:
+                    request = ProviderRequest(
+                        prompt=prompt,
+                        model="",  # 使用默认模型
+                        temperature=0.7
+                    )
+                    response = await self.context.llm_request(request)
+                    logger.debug(f"无event大模型调用成功，响应长度: {len(response.content) if response else 0}")
+                    return response.content if response else ""
+                except Exception as e:
+                    logger.debug(f"无event大模型调用失败: {e}")
+                    return ""
         except Exception as e:
             logger.error(f"调用大模型失败: {e}")
             logger.error(traceback.format_exc())
@@ -285,19 +299,34 @@ class MyPlugin(Star):
             user_id = event.get_sender_id()
             logger.info(f"处理私聊请求: 用户 {user_id}, 内容: {message_content}")
             
-            # 生成思考内容
-            thinking_prompt = f"管理员要求我发送私聊消息：{message_content}。请生成一个合适的回复。"
-            thinking = await self.call_llm(thinking_prompt, event)
-            logger.debug(f"生成思考内容: {thinking}")
-            
-            # 发送私聊消息
-            message = f"【私聊消息】\n{message_content}\n\n【思考】\n{thinking}"
-            logger.info(f"向用户 {user_id} 发送私聊消息")
-            await self.send_private_message(user_id, message, event)
+            # 检查是否在群聊中触发
+            group_id = event.get_group_id()
+            if group_id:
+                # 生成思考内容
+                thinking_prompt = f"用户在群里要求我私聊他，内容是：{message_content}。请生成一个合适的思考。"
+                thinking = await self.call_llm(thinking_prompt, event)
+                logger.debug(f"生成思考内容: {thinking}")
+                
+                # 发送私聊消息
+                message = f"【私聊消息】\n{message_content}\n\n【思考】\n{thinking}"
+                logger.info(f"向用户 {user_id} 发送私聊消息")
+                success = await self.send_private_message(user_id, message, event)
+                
+                if success:
+                    # 回复用户在群里的消息
+                    reply_prompt = f"我已经成功向用户发送了私聊消息，内容是：{message_content}。请生成一个简洁的群内回复。"
+                    reply = await self.call_llm(reply_prompt, event)
+                    if not reply:
+                        reply = "已发送私聊消息，请查收"
+                    return event.plain_result(reply)
+            else:
+                # 私聊中触发，处理管理员回复
+                await self.handle_private_forward(event)
 
         except Exception as e:
             logger.error(f"处理私聊请求失败: {e}")
             logger.error(traceback.format_exc())
+            return event.plain_result("处理私聊请求时发生错误")
 
     async def handle_summary_request(self, event: AstrMessageEvent):
         """处理总结请求"""
@@ -427,6 +456,66 @@ class MyPlugin(Star):
             result = await self.send_error_message(event, "on_all_messages", str(e), traceback.format_exc())
             if result:
                 yield result
+
+    async def handle_private_forward(self, event: AstrMessageEvent):
+        """处理私聊消息转接"""
+        try:
+            user_id = event.get_sender_id()
+            # 尝试不同的方式获取消息内容
+            try:
+                message_str = event.message_str
+            except AttributeError:
+                message_str = str(event)
+            
+            logger.info(f"收到私聊消息: 用户 {user_id}, 内容: {message_str}")
+            
+            # 检查是否是管理员回复
+            if self.is_admin(user_id):
+                # 检查是否是回复转接消息
+                # 这里需要一个机制来识别管理员回复的是哪个用户的消息
+                # 暂时简单处理，检查消息中是否包含用户ID
+                import re
+                user_id_match = re.search(r'用户ID:(\d+)', message_str)
+                if user_id_match:
+                    target_user_id = user_id_match.group(1)
+                    # 提取回复内容
+                    reply_content = re.sub(r'用户ID:\d+', '', message_str).strip()
+                    if reply_content:
+                        logger.info(f"管理员 {user_id} 回复用户 {target_user_id}: {reply_content}")
+                        # 发送回复给目标用户
+                        await self.send_private_message(target_user_id, reply_content)
+                        return event.plain_result(f"已将回复发送给用户 {target_user_id}")
+            else:
+                # 非管理员私聊消息，转接到管理员
+                config = self.get_realtime_config()
+                admin_list = config.get("admin_list", [])
+                
+                for admin_id in admin_list:
+                    logger.info(f"将用户 {user_id} 的私聊消息转接到管理员 {admin_id}")
+                    # 生成思考内容
+                    thinking_prompt = f"用户 {user_id} 发送了一条私聊消息，需要转接给管理员。请生成一个转接提示。"
+                    thinking = await self.call_llm(thinking_prompt, event)
+                    
+                    # 发送转接消息给管理员
+                    forward_message = f"【私聊转接】\n用户ID: {user_id}\n消息内容: {message_str}\n\n【思考】\n{thinking}\n\n回复格式: 直接回复内容即可，系统会自动转发给用户"
+                    await self.send_private_message(admin_id, forward_message, event)
+                
+                # 回复用户
+                user_reply_prompt = f"用户发送了私聊消息，我已将消息转接到管理员。请生成一个友好的回复。"
+                user_reply = await self.call_llm(user_reply_prompt, event)
+                if not user_reply:
+                    user_reply = "您好，您的消息已转接到管理员，我们会尽快回复您。"
+                return event.plain_result(user_reply)
+            
+        except Exception as e:
+            logger.error(f"处理私聊转接失败: {e}")
+            logger.error(traceback.format_exc())
+            return event.plain_result("处理私聊消息时发生错误，请稍后再试。")
+
+    @event_message_type(EventMessageType.PRIVATE)
+    async def on_private_message(self, event: AstrMessageEvent):
+        """处理私聊消息"""
+        return await self.handle_private_forward(event)
 
     async def terminate(self):
         """插件卸载"""
