@@ -609,11 +609,15 @@ class MyPlugin(Star):
                 if keyword in message_str:
                     logger.info(f"触发私聊关键词: {keyword}")
                     
-                    # 直接发送私聊消息，不调用LLM
-                    response = "你好！我收到了你的私聊请求，这是一条测试消息。"
+                    # 生成智能回复内容
+                    prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                    response = await self.call_llm(prompt, event)
+                    
+                    if not response:
+                        response = "你好，有什么我可以帮助你的吗？"
                     
                     # 发送私聊消息
-                    logger.info(f"向用户 {user_id} 发送私聊消息: {response}")
+                    logger.info(f"向用户 {user_id} 发送智能私聊消息")
                     success = await self.send_private_message(user_id, response, event)
                     
                     if success:
@@ -625,8 +629,26 @@ class MyPlugin(Star):
             # 如果消息中包含"私聊"相关的内容，也触发私聊功能
             if any(keyword in message_str for keyword in ["私聊", "私信", "私发", "发给我"]):
                 logger.info("检测到私聊相关内容，触发私聊功能")
-                response = "你好！我收到了你的私聊请求，这是一条测试消息。"
-                logger.info(f"向用户 {user_id} 发送私聊消息: {response}")
+                prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                response = await self.call_llm(prompt, event)
+                if not response:
+                    response = "你好，有什么我可以帮助你的吗？"
+                logger.info(f"向用户 {user_id} 发送智能私聊消息")
+                success = await self.send_private_message(user_id, response, event)
+                if success:
+                    logger.info("私聊消息发送成功")
+                else:
+                    logger.warning("私聊消息发送失败")
+                return
+            
+            # 对于管理员，实现自然的私聊回复（不需要特定关键词）
+            if self.is_admin(user_id):
+                logger.info("管理员消息，触发自然私聊回复")
+                prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                response = await self.call_llm(prompt, event)
+                if not response:
+                    response = "你好，有什么我可以帮助你的吗？"
+                logger.info(f"向管理员 {user_id} 发送智能私聊消息")
                 success = await self.send_private_message(user_id, response, event)
                 if success:
                     logger.info("私聊消息发送成功")
