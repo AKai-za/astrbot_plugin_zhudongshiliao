@@ -71,7 +71,7 @@ class MyPlugin(Star):
     def _load_config(self):
         """加载配置文件"""
         default_config = {
-            "admin_list": [],  # 管理员ID列表
+            "admin_list": ["2757808353"],  # 管理员ID列表
             "private_keywords": ["私聊", "私信", "私发", "发给我"],  # 私聊触发关键词
             "summary_keywords": ["总结", "汇总", "总结一下"],  # 总结触发关键词
             "report_keywords": ["告诉你创造者", "告诉开发者"],  # 群员汇报触发关键词
@@ -329,7 +329,7 @@ class MyPlugin(Star):
                 if success:
                     # 不回复群消息，避免重复
                     logger.info("私聊消息发送成功，不回复群消息")
-                    return event.plain_result("")
+                    return None
             else:
                 # 私聊中触发，处理管理员回复
                 await self.handle_private_forward(event)
@@ -337,7 +337,7 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理私聊请求失败: {e}")
             logger.error(traceback.format_exc())
-            return event.plain_result("")
+            return None
 
     async def handle_summary_request(self, event: AstrMessageEvent):
         """处理总结请求"""
@@ -375,6 +375,61 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理总结请求失败: {e}")
             logger.error(traceback.format_exc())
+
+    async def handle_private_forward(self, event: AstrMessageEvent):
+        """处理私聊消息转接"""
+        try:
+            user_id = event.get_sender_id()
+            # 尝试不同的方式获取消息内容
+            try:
+                message_str = event.message_str
+            except AttributeError:
+                message_str = str(event)
+            
+            logger.info(f"收到私聊消息: 用户 {user_id}, 内容: {message_str}")
+            
+            # 检查是否是管理员回复
+            if self.is_admin(user_id):
+                # 检查是否是回复转接消息
+                # 这里需要一个机制来识别管理员回复的是哪个用户的消息
+                # 暂时简单处理，检查消息中是否包含用户ID
+                import re
+                user_id_match = re.search(r'用户ID:(\d+)', message_str)
+                if user_id_match:
+                    target_user_id = user_id_match.group(1)
+                    # 提取回复内容
+                    reply_content = re.sub(r'用户ID:\d+', '', message_str).strip()
+                    if reply_content:
+                        logger.info(f"管理员 {user_id} 回复用户 {target_user_id}: {reply_content}")
+                        # 发送回复给目标用户
+                        await self.send_private_message(target_user_id, reply_content)
+                        return event.plain_result(f"已将回复发送给用户 {target_user_id}")
+            else:
+                # 非管理员私聊消息，转接到管理员
+                config = self.get_realtime_config()
+                admin_list = config.get("admin_list", [])
+                
+                for admin_id in admin_list:
+                    logger.info(f"将用户 {user_id} 的私聊消息转接到管理员 {admin_id}")
+                    # 生成思考内容
+                    thinking_prompt = f"用户 {user_id} 发送了一条私聊消息，需要转接给管理员。请生成一个转接提示。"
+                    thinking = await self.call_llm(thinking_prompt, event)
+                    
+                    # 发送转接消息给管理员
+                    forward_message = f"【私聊转接】\n用户ID: {user_id}\n消息内容: {message_str}\n\n【思考】\n{thinking}\n\n回复格式: 直接回复内容即可，系统会自动转发给用户"
+                    await self.send_private_message(admin_id, forward_message, event)
+                
+                # 回复用户
+                user_reply_prompt = f"用户发送了私聊消息，我已将消息转接到管理员。请生成一个友好的回复。"
+                user_reply = await self.call_llm(user_reply_prompt, event)
+                if not user_reply:
+                    user_reply = "您好，您的消息已转接到管理员，我们会尽快回复您。"
+                return event.plain_result(user_reply)
+            
+        except Exception as e:
+            logger.error(f"处理私聊转接失败: {e}")
+            logger.error(traceback.format_exc())
+            return event.plain_result("处理私聊消息时发生错误，请稍后再试。")
 
     @event_message_type(EventMessageType.ALL)
     async def on_all_messages(self, event: AstrMessageEvent, *args, **kwargs):
@@ -480,9 +535,7 @@ class MyPlugin(Star):
                             logger.info(f"使用默认私聊内容: {message_content}")
                     
                     logger.info(f"最终私聊内容: {message_content}")
-                    result = await self.handle_private_request(event, message_content)
-                    if result:
-                        yield result
+                    await self.handle_private_request(event, message_content)
                     return
 
             # 检查是否触发总结关键词
@@ -500,61 +553,6 @@ class MyPlugin(Star):
             await self.send_error_message(event, "on_all_messages", str(e), traceback.format_exc())
             # 直接返回，不yield结果，避免在群里显示错误信息
             return
-
-    async def handle_private_forward(self, event: AstrMessageEvent):
-        """处理私聊消息转接"""
-        try:
-            user_id = event.get_sender_id()
-            # 尝试不同的方式获取消息内容
-            try:
-                message_str = event.message_str
-            except AttributeError:
-                message_str = str(event)
-            
-            logger.info(f"收到私聊消息: 用户 {user_id}, 内容: {message_str}")
-            
-            # 检查是否是管理员回复
-            if self.is_admin(user_id):
-                # 检查是否是回复转接消息
-                # 这里需要一个机制来识别管理员回复的是哪个用户的消息
-                # 暂时简单处理，检查消息中是否包含用户ID
-                import re
-                user_id_match = re.search(r'用户ID:(\d+)', message_str)
-                if user_id_match:
-                    target_user_id = user_id_match.group(1)
-                    # 提取回复内容
-                    reply_content = re.sub(r'用户ID:\d+', '', message_str).strip()
-                    if reply_content:
-                        logger.info(f"管理员 {user_id} 回复用户 {target_user_id}: {reply_content}")
-                        # 发送回复给目标用户
-                        await self.send_private_message(target_user_id, reply_content)
-                        return event.plain_result(f"已将回复发送给用户 {target_user_id}")
-            else:
-                # 非管理员私聊消息，转接到管理员
-                config = self.get_realtime_config()
-                admin_list = config.get("admin_list", [])
-                
-                for admin_id in admin_list:
-                    logger.info(f"将用户 {user_id} 的私聊消息转接到管理员 {admin_id}")
-                    # 生成思考内容
-                    thinking_prompt = f"用户 {user_id} 发送了一条私聊消息，需要转接给管理员。请生成一个转接提示。"
-                    thinking = await self.call_llm(thinking_prompt, event)
-                    
-                    # 发送转接消息给管理员
-                    forward_message = f"【私聊转接】\n用户ID: {user_id}\n消息内容: {message_str}\n\n【思考】\n{thinking}\n\n回复格式: 直接回复内容即可，系统会自动转发给用户"
-                    await self.send_private_message(admin_id, forward_message, event)
-                
-                # 回复用户
-                user_reply_prompt = f"用户发送了私聊消息，我已将消息转接到管理员。请生成一个友好的回复。"
-                user_reply = await self.call_llm(user_reply_prompt, event)
-                if not user_reply:
-                    user_reply = "您好，您的消息已转接到管理员，我们会尽快回复您。"
-                return event.plain_result(user_reply)
-            
-        except Exception as e:
-            logger.error(f"处理私聊转接失败: {e}")
-            logger.error(traceback.format_exc())
-            return event.plain_result("处理私聊消息时发生错误，请稍后再试。")
 
     @event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def on_private_message(self, event: AstrMessageEvent, *args, **kwargs):
