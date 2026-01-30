@@ -40,10 +40,20 @@ class MyPlugin(Star):
             webui_config = self.context.get_config()
             if webui_config:
                 logger.info("从WebUI加载配置成功")
+                logger.info(f"WebUI配置: {webui_config}")
+                
+                # 确保admin_list存在且不为空
+                if "admin_list" not in webui_config:
+                    webui_config["admin_list"] = self.config.get("admin_list", ["2757808353"])
+                
+                # 同步所有配置项
                 for key, value in webui_config.items():
                     if key != "group_message_history":
                         self.config[key] = value
+                
+                # 保存配置
                 self._save_config(self.config)
+                logger.info(f"保存后的配置: {self.config}")
             else:
                 logger.warning("WebUI配置为空")
         except Exception as e:
@@ -55,9 +65,24 @@ class MyPlugin(Star):
         try:
             webui_config = self.context.get_config()
             if webui_config:
-                if "admin_list" not in webui_config or not webui_config["admin_list"]:
+                logger.info(f"获取WebUI实时配置: {webui_config}")
+                
+                # 确保admin_list存在且不为空
+                if "admin_list" not in webui_config:
                     webui_config["admin_list"] = self.config.get("admin_list", ["2757808353"])
-                return webui_config
+                elif not webui_config["admin_list"]:
+                    webui_config["admin_list"] = ["2757808353"]
+                
+                # 合并配置
+                merged_config = self.config.copy()
+                for key, value in webui_config.items():
+                    if key != "group_message_history":
+                        merged_config[key] = value
+                
+                logger.info(f"合并后的实时配置: {merged_config}")
+                return merged_config
+            
+            logger.info(f"使用本地配置: {self.config}")
             return self.config
         except Exception as e:
             logger.error(f"获取实时配置失败: {e}")
@@ -79,6 +104,7 @@ class MyPlugin(Star):
         if not os.path.exists(self.config_file):
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(default_config, f, ensure_ascii=False, indent=2)
+            logger.info(f"创建默认配置: {default_config}")
             return default_config
 
         try:
@@ -88,6 +114,7 @@ class MyPlugin(Star):
                 if key not in config:
                     config[key] = value
             self._save_config(config)
+            logger.info(f"加载配置文件: {config}")
             return config
         except Exception as e:
             logger.error(f"加载配置文件失败: {e}")
@@ -99,6 +126,7 @@ class MyPlugin(Star):
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
             self.config = config
+            logger.info(f"保存配置文件: {config}")
         except Exception as e:
             logger.error(f"保存配置文件失败: {e}")
 
@@ -149,25 +177,59 @@ class MyPlugin(Star):
                 user_id = private_send_id
                 logger.info(f"使用私发ID: {private_send_id}")
 
-            platform_id = "qq"
-            if event and hasattr(event, 'get_platform_id'):
-                platform_id = event.get_platform_id()
+            user_id_str = str(user_id)
+            logger.info(f"准备发送私聊消息到 {user_id_str}")
 
-            session = MessageSession(
-                platform_name=platform_id,
-                message_type=MessageType.FRIEND_MESSAGE,
-                session_id=str(user_id)
-            )
+            # 尝试使用event对象发送消息
+            if event and hasattr(event, 'reply'):
+                try:
+                    logger.info("尝试使用event.reply发送私聊消息")
+                    await event.reply(message, private=True)
+                    logger.info(f"成功使用event.reply发送私聊消息到 {user_id_str}")
+                    return True
+                except Exception as e:
+                    logger.warning(f"使用event.reply发送私聊消息失败: {e}")
+            
+            # 尝试使用context的send_private_message方法
+            if hasattr(self.context, 'send_private_message'):
+                try:
+                    logger.info("尝试使用context.send_private_message发送私聊消息")
+                    success = await self.context.send_private_message(user_id_str, message)
+                    if success:
+                        logger.info(f"成功使用context.send_private_message发送私聊消息到 {user_id_str}")
+                        return True
+                    else:
+                        logger.warning(f"使用context.send_private_message发送私聊消息失败")
+                except Exception as e:
+                    logger.warning(f"使用context.send_private_message发送私聊消息失败: {e}")
+            
+            # 尝试使用MessageSession发送消息
+            try:
+                platform_id = "qq"
+                if event and hasattr(event, 'get_platform_id'):
+                    platform_id = event.get_platform_id()
 
-            message_chain = MessageChain().message(message)
-            success = await self.context.send_message(session, message_chain)
+                session = MessageSession(
+                    platform_name=platform_id,
+                    message_type=MessageType.FRIEND_MESSAGE,
+                    session_id=user_id_str
+                )
 
-            if success:
-                logger.info(f"成功发送私聊消息到 {user_id}")
-                return True
-            else:
-                logger.warning(f"发送私聊消息到 {user_id} 失败")
-                return False
+                message_chain = MessageChain().message(message)
+                success = await self.context.send_message(session, message_chain)
+
+                if success:
+                    logger.info(f"成功发送私聊消息到 {user_id_str}")
+                    return True
+                else:
+                    logger.warning(f"发送私聊消息到 {user_id_str} 失败")
+                    return False
+            except Exception as e:
+                logger.warning(f"使用MessageSession发送私聊消息失败: {e}")
+                
+            # 所有方法都失败
+            logger.error(f"所有发送私聊消息的方法都失败")
+            return False
 
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
@@ -192,12 +254,19 @@ class MyPlugin(Star):
                 error=error
             )
 
+            # 添加详细的错误信息
+            detailed_error = f"{error_info}\n\n【详细错误】\n{traceback_str}"
+
             admin_list = config.get("admin_list", ["2757808353"])
+            logger.info(f"向管理员列表发送错误信息: {admin_list}")
+            
             for admin_id in admin_list:
-                await self.send_private_message(admin_id, error_info)
+                logger.info(f"向管理员 {admin_id} 发送错误信息")
+                await self.send_private_message(admin_id, detailed_error, event)
             
             if private_send_id and private_send_id not in admin_list:
-                await self.send_private_message(private_send_id, error_info)
+                logger.info(f"向私发ID {private_send_id} 发送错误信息")
+                await self.send_private_message(private_send_id, detailed_error, event)
 
         except Exception as e:
             logger.error(f"发送错误信息失败: {e}")
@@ -281,7 +350,7 @@ class MyPlugin(Star):
             logger.info(f"处理私聊请求: 用户 {user_id}, 内容: {message_content}")
             
             if group_id:
-                prompt = f"用户在群里说：'你私聊我看看'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                prompt = f"用户在群里说：'{message_content}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
                 response = await self.call_llm(prompt, event)
                 
                 if not response:
@@ -339,55 +408,75 @@ class MyPlugin(Star):
             await self.send_error_message(event, "handle_summary_request", str(e), traceback.format_exc())
 
     @event_message_type(EventMessageType.ALL)
-    async def on_all_messages(self, *args, **kwargs):
+    async def on_all_messages(self, event, *args, **kwargs):
         """处理所有消息"""
         try:
-            event = None
-            if args:
-                event = args[0]
-            
+            # 确保event是有效的消息事件对象
             if not event:
-                logger.warning("没有事件对象，忽略消息")
+                logger.error("事件对象为None")
                 return
             
+            # 尝试获取用户ID
             user_id = None
             try:
                 if hasattr(event, 'get_sender_id'):
                     user_id = event.get_sender_id()
+                elif hasattr(event, 'sender_id'):
+                    user_id = event.sender_id
+                elif hasattr(event, 'user_id'):
+                    user_id = event.user_id
+                
+                if user_id is None:
+                    logger.warning("获取到的用户ID为None")
+                    return
             except Exception as e:
                 logger.error(f"获取用户ID失败: {e}")
                 return
             
+            # 尝试获取消息内容
             message_str = ""
             try:
                 if hasattr(event, 'message_str'):
                     message_str = event.message_str
-                else:
-                    message_str = str(event)
+                elif hasattr(event, 'message'):
+                    message_str = str(event.message)
+                elif hasattr(event, 'content'):
+                    message_str = str(event.content)
+                
+                if not message_str:
+                    logger.warning("获取到的消息内容为空")
+                    return
             except Exception as e:
                 logger.error(f"获取消息内容失败: {e}")
                 return
             
+            # 尝试获取群ID
             group_id = None
             try:
                 if hasattr(event, 'get_group_id'):
                     group_id = event.get_group_id()
+                elif hasattr(event, 'group_id'):
+                    group_id = event.group_id
             except Exception as e:
                 logger.error(f"获取群ID失败: {e}")
             
-            logger.info(f"收到消息: 用户 {user_id}, 内容: {message_str}, 群: {group_id}")
+            logger.info(f"收到消息: 用户 {user_id}, 内容: '{message_str}', 群: {group_id}")
 
+            # 检查是否在被禁言的群中
             if group_id and group_id in self.muted_groups:
                 logger.info(f"群 {group_id} 已被禁言，忽略消息")
                 return
             
+            # 检查是否包含唤醒词（如机器人名称）
             wake_words = ["幽幽", "洛幽幽"]
             contains_wake_word = any(wake_word in message_str for wake_word in wake_words)
             
+            # 如果是群消息且不包含唤醒词，直接返回
             if group_id and not contains_wake_word:
                 logger.debug(f"消息不包含唤醒词，忽略")
                 return
 
+            # 检查是否触发群员汇报（非管理员也可触发）
             config = self.get_realtime_config()
             report_keywords = config.get("report_keywords", ["告诉你创造者", "告诉开发者"])
             for keyword in report_keywords:
@@ -397,27 +486,28 @@ class MyPlugin(Star):
                     await self.handle_report_request(event, report_content)
                     return
             
+            # 只有管理员可以触发其他功能
             if not self.is_admin(user_id):
                 logger.info(f"用户 {user_id} 不是管理员，忽略消息")
                 return
             else:
                 logger.info(f"用户 {user_id} 是管理员，继续处理消息")
 
+            # 检查是否触发禁言事件
             if "禁言" in message_str:
                 await self.handle_mute_event(event)
                 return
 
+            # 检查是否触发私聊关键词
             private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
             logger.info(f"检查私聊关键词: {private_keywords}")
             logger.info(f"消息内容: '{message_str}'")
             
             # 检查是否包含任何私聊关键词
-            found_keyword = False
             for keyword in private_keywords:
                 logger.info(f"检查关键词: '{keyword}' 是否在消息中")
                 if keyword in message_str:
                     logger.info(f"触发私聊关键词: {keyword}")
-                    found_keyword = True
                     
                     # 生成智能回复内容
                     prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
@@ -435,10 +525,8 @@ class MyPlugin(Star):
                     else:
                         logger.warning("私聊消息发送失败")
                     return
-            
-            if not found_keyword:
-                logger.info("未找到私聊关键词")
 
+            # 检查是否触发总结关键词
             summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
             for keyword in summary_keywords:
                 if keyword in message_str:
