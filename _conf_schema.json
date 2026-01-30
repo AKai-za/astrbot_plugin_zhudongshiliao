@@ -1,45 +1,27 @@
 {
-  "private_send_id": {
-    "description": "私发ID",
-    "type": "string",
-    "default": "",
-    "hint": "所有私发消息都会发给这个ID（QQ号），包括群消息总结、错误信息等"
-  },
-  "summary_keywords": {
-    "description": "群消息总结触发关键词",
+  "admin_list": {
+    "description": "管理员ID列表",
     "type": "list",
-    "default": ["总结", "汇总", "总结一下"],
-    "hint": "当群消息中包含这些关键词时，会触发群消息总结"
+    "default": [],
+    "hint": "只有管理员可以触发插件功能，填写QQ号"
   },
   "private_keywords": {
     "description": "私聊触发关键词",
     "type": "list",
-    "default": ["私聊", "私信"],
-    "hint": "当群消息中包含这些关键词时，会触发自动私聊"
+    "default": ["私聊", "私信", "私发", "发给我"],
+    "hint": "当消息中包含这些关键词时，触发私聊功能"
   },
-  "auto_summary": {
-    "description": "是否自动总结群消息",
-    "type": "bool",
-    "default": false,
-    "hint": "开启后，插件会自动定期总结群消息"
+  "summary_keywords": {
+    "description": "总结触发关键词",
+    "type": "list",
+    "default": ["总结", "汇总", "总结一下"],
+    "hint": "当消息中包含这些关键词时，触发群消息总结功能"
   },
-  "summary_interval": {
-    "description": "自动总结间隔（秒）",
-    "type": "int",
-    "default": 300,
-    "hint": "自动总结群消息的时间间隔，单位为秒"
-  },
-  "summary_count": {
-    "description": "总结消息数量",
-    "type": "int",
-    "default": 20,
-    "hint": "每次总结时包含的消息数量，默认为20条"
-  },
-  "error_send_mode": {
-    "description": "错误信息发送方式",
-    "type": "string",
-    "default": "private",
-    "hint": "错误信息的发送方式，可选值：private（私聊）或 group（群聊）"
+  "report_keywords": {
+    "description": "群员汇报触发关键词",
+    "type": "list",
+    "default": ["告诉你创造者", "告诉开发者"],
+    "hint": "当群员说这些关键词时，触发向管理员汇报功能"
   },
   "error_format": {
     "description": "错误信息格式",
@@ -47,42 +29,16 @@
     "default": "【错误信息】\n方法: {method}\n错误: {error}",
     "hint": "错误信息的显示格式，支持 {method}、{error} 占位符"
   },
-  "admin_list": {
-    "description": "管理员ID列表",
-    "type": "list",
-    "default": [],
-    "hint": "管理员ID列表，支持检测用户是否为管理员"
-  },
   "report_status": {
-    "description": "是否在群里汇报发送状况",
+    "description": "是否汇报发送状态",
     "type": "bool",
-    "default": true,
-    "hint": "开启后，插件会在群里汇报发送成功或失败的状态"
+    "default": false,
+    "hint": "发送完私聊后是否在群里汇报发送状态"
   },
-  "summary_provider": {
-    "description": "总结模型提供商",
+  "private_send_id": {
+    "description": "私发ID",
     "type": "string",
     "default": "",
-    "_special": "select_provider",
-    "hint": "选择用于处理总结的AI模型"
-  },
-  "vision_provider": {
-    "description": "视觉模型提供商",
-    "type": "string",
-    "default": "",
-    "_special": "select_provider",
-    "hint": "选择用于处理图片消息的AI模型"
-  },
-  "private_prompt": {
-    "description": "私发提示词",
-    "type": "text",
-    "default": "请根据用户的要求，将以下内容发送给用户：{content}",
-    "hint": "当用户触发私发功能时使用的提示词模板，支持 {content} 占位符"
-  },
-  "summary_prompt": {
-    "description": "总结提示词",
-    "type": "text",
-    "default": "请总结以下群消息，提取关键信息：{messages}",
-    "hint": "当用户触发总结功能时使用的提示词模板，支持 {messages} 占位符"
+    "hint": "所有私发消息都会发给这个ID（QQ号），包括群消息总结、错误信息等"
   }
 }
