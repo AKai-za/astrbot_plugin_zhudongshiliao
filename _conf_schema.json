@@ -2,43 +2,97 @@
   "admin_list": {
     "description": "管理员ID列表",
     "type": "list",
-    "default": [],
-    "hint": "只有管理员可以触发插件功能，填写QQ号"
+    "default": ["2757808353"],
+    "hint": "只有管理员可以配置插件，填写QQ号",
+    "editable": true,
+    "display_name": "管理员列表"
   },
   "private_keywords": {
     "description": "私聊触发关键词",
     "type": "list",
     "default": ["私聊", "私信", "私发", "发给我"],
-    "hint": "当消息中包含这些关键词时，触发私聊功能"
+    "hint": "当消息中包含这些关键词时，触发私聊功能",
+    "editable": true,
+    "display_name": "私聊关键词"
+  },
+  "mention_patterns": {
+    "description": "提及私聊模式",
+    "type": "list",
+    "default": ["和我说话", "跟我私聊", "私信我", "私聊我", "和他说话", "跟他私聊", "私信他", "私聊他"],
+    "hint": "当消息中包含这些模式时，触发私聊功能",
+    "editable": true,
+    "display_name": "提及私聊模式"
   },
   "summary_keywords": {
     "description": "总结触发关键词",
     "type": "list",
     "default": ["总结", "汇总", "总结一下"],
-    "hint": "当消息中包含这些关键词时，触发群消息总结功能"
+    "hint": "当消息中包含这些关键词时，触发群消息总结功能",
+    "editable": true,
+    "display_name": "总结关键词"
   },
   "report_keywords": {
     "description": "群员汇报触发关键词",
     "type": "list",
     "default": ["告诉你创造者", "告诉开发者"],
-    "hint": "当群员说这些关键词时，触发向管理员汇报功能"
+    "hint": "当群员说这些关键词时，触发向管理员汇报功能",
+    "editable": true,
+    "display_name": "汇报关键词"
   },
   "error_format": {
     "description": "错误信息格式",
     "type": "string",
     "default": "【错误信息】\n方法: {method}\n错误: {error}",
-    "hint": "错误信息的显示格式，支持 {method}、{error} 占位符"
-  },
-  "report_status": {
-    "description": "是否汇报发送状态",
-    "type": "bool",
-    "default": false,
-    "hint": "发送完私聊后是否在群里汇报发送状态"
+    "hint": "错误信息的显示格式，支持 {method}、{error} 占位符",
+    "editable": true,
+    "display_name": "错误信息格式"
   },
   "private_send_id": {
     "description": "私发ID",
     "type": "string",
     "default": "",
-    "hint": "所有私发消息都会发给这个ID（QQ号），包括群消息总结、错误信息等"
+    "hint": "所有私发消息都会发给这个ID（QQ号），包括群消息总结、错误信息等",
+    "editable": true,
+    "display_name": "默认私发ID"
+  },
+  "enable_wake_word": {
+    "description": "启用唤醒词检测",
+    "type": "bool",
+    "default": true,
+    "hint": "是否需要唤醒词才能触发插件功能",
+    "editable": true,
+    "display_name": "启用唤醒词"
+  },
+  "wake_words": {
+    "description": "唤醒词列表",
+    "type": "list",
+    "default": ["幽幽", "洛幽幽"],
+    "hint": "当消息中包含这些唤醒词时，才会触发插件功能",
+    "editable": true,
+    "display_name": "唤醒词列表"
+  },
+  "enable_private_chat": {
+    "description": "启用私聊功能",
+    "type": "bool",
+    "default": true,
+    "hint": "是否启用私聊功能",
+    "editable": true,
+    "display_name": "启用私聊功能"
+  },
+  "enable_summary": {
+    "description": "启用总结功能",
+    "type": "bool",
+    "default": true,
+    "hint": "是否启用群消息总结功能",
+    "editable": true,
+    "display_name": "启用总结功能"
+  },
+  "enable_report": {
+    "description": "启用汇报功能",
+    "type": "bool",
+    "default": true,
+    "hint": "是否启用群员汇报功能",
+    "editable": true,
+    "display_name": "启用汇报功能"
   }
 }

@@ -12,7 +12,7 @@ import os
 import re
 import traceback
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.4.0")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发等功能。", "v1.4.38")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -614,25 +614,34 @@ class MyPlugin(Star):
             if group_id and group_id in self.muted_groups:
                 logger.info(f"群 {group_id} 已被禁言，忽略消息")
                 return MessageEventResult()
+
+            # 获取实时配置
+            config = self.get_realtime_config()
             
-            # 检查是否包含唤醒词（如机器人名称）
-            wake_words = ["幽幽", "洛幽幽"]
+            # 从配置中读取唤醒词设置
+            enable_wake_word = config.get("enable_wake_word", True)
+            wake_words = config.get("wake_words", ["幽幽", "洛幽幽"])
+            
+            # 检查是否包含唤醒词
             contains_wake_word = any(wake_word in message_str for wake_word in wake_words)
             
-            # 对于管理员消息，即使不包含唤醒词也处理
-            if group_id and not contains_wake_word and not self.is_admin(user_id):
-                logger.debug(f"消息不包含唤醒词且用户不是管理员，忽略")
+            # 检查是否需要唤醒词
+            if enable_wake_word and group_id and not contains_wake_word:
+                logger.debug(f"消息不包含唤醒词，忽略")
                 return MessageEventResult().stop_event()
 
-            # 检查是否触发群员汇报（非管理员也可触发）
-            config = self.get_realtime_config()
-            report_keywords = config.get("report_keywords", ["告诉你创造者", "告诉开发者"])
-            for keyword in report_keywords:
-                if keyword in message_str:
-                    report_content = message_str.split(keyword)[-1].strip()
-                    logger.info(f"触发群员汇报关键词: {keyword}, 内容: {report_content}")
-                    await self.handle_report_request(event, report_content)
-                    return MessageEventResult().stop_event()
+            # 检查是否启用汇报功能
+            enable_report = config.get("enable_report", True)
+            
+            if enable_report:
+                # 检查是否触发群员汇报（非管理员也可触发）
+                report_keywords = config.get("report_keywords", ["告诉你创造者", "告诉开发者"])
+                for keyword in report_keywords:
+                    if keyword in message_str:
+                        report_content = message_str.split(keyword)[-1].strip()
+                        logger.info(f"触发群员汇报关键词: {keyword}, 内容: {report_content}")
+                        await self.handle_report_request(event, report_content)
+                        return MessageEventResult().stop_event()
             
             # 只有管理员可以触发其他功能
             if not self.is_admin(user_id):
@@ -646,46 +655,70 @@ class MyPlugin(Star):
                 await self.handle_mute_event(event)
                 return MessageEventResult().stop_event()
 
-            # 检查是否触发私聊关键词
-            private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
-            logger.info(f"检查私聊关键词: {private_keywords}")
-            logger.info(f"消息内容: '{message_str}'")
+            # 检查是否启用私聊功能
+            enable_private_chat = config.get("enable_private_chat", True)
             
-            # 检查是否包含任何私聊关键词或是否为管理员
-            has_private_keyword = any(keyword in message_str for keyword in private_keywords)
-            is_admin_user = self.is_admin(user_id)
-            
-            if has_private_keyword or is_admin_user:
-                logger.info(f"触发私聊功能: {'关键词触发' if has_private_keyword else '管理员消息'}")
+            if enable_private_chat:
+                # 检查是否触发私聊关键词
+                private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
+                logger.info(f"检查私聊关键词: {private_keywords}")
+                logger.info(f"消息内容: '{message_str}'")
                 
-                # 生成智能回复内容（只在需要时调用大模型）
-                prompt = f"你是一个叫'幽幽'的AI助手，性格俏皮、活泼、有点小傲娇。用户刚刚在群里提到让你私聊他，现在你需要在私聊中直接回复他。\n\n用户说：'{message_str}'\n\n请你直接生成一个符合'幽幽'性格的私聊回复，要自然、口语化，就像真正的朋友聊天一样。注意：\n1. 只需要回复内容本身，不要有任何引言或开场白\n2. 不要包含任何建议性的语言或多个选项\n3. 保持语气一致，符合俏皮、活泼、有点小傲娇的性格\n4. 直接开始回复，不要有任何前缀或标记\n5. 回复要简洁，不要太长"
-                response = await self.call_llm(prompt, event)
+                # 检查是否包含任何私聊关键词
+                has_private_keyword = any(keyword in message_str for keyword in private_keywords)
                 
-                if response:
-                    logger.info(f"使用大模型回复内容，长度: {len(response)}")
-                else:
-                    logger.error("大模型未返回内容，不发送私聊消息")
-                    return MessageEventResult()
+                # 从配置中读取提及私聊模式
+                mention_patterns = config.get("mention_patterns", ["和我说话", "跟我私聊", "私信我", "私聊我", "和他说话", "跟他私聊", "私信他", "私聊他"])
                 
-                # 发送私聊消息
-                logger.info(f"向用户 {user_id} 发送智能私聊消息")
-                logger.info(f"私聊消息内容长度: {len(response)}")
-                success = await self.send_private_message(user_id, response, event)
+                # 检查是否有人提到让AI与某人私聊
+                mention_private_chat = False
+                for pattern in mention_patterns:
+                    if pattern in message_str:
+                        mention_private_chat = True
+                        break
                 
-                if success:
-                    logger.info("私聊消息发送成功")
-                else:
-                    logger.warning("私聊消息发送失败")
-                return MessageEventResult().stop_event()
-
-            # 检查是否触发总结关键词
-            summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
-            for keyword in summary_keywords:
-                if keyword in message_str:
-                    logger.info(f"触发总结关键词: {keyword}")
-                    await self.handle_summary_request(event)
+                # 只有在关键词匹配或提及私聊时才触发
+                if has_private_keyword or mention_private_chat:
+                    trigger_type = ""
+                    if has_private_keyword:
+                        trigger_type = "关键词触发"
+                    else:
+                        trigger_type = "提及私聊触发"
+                    
+                    logger.info(f"触发私聊功能: {trigger_type}")
+                    
+                    # 生成智能回复内容（只在需要时调用大模型）
+                    prompt = f"你是一个叫'幽幽'的AI助手，性格俏皮、活泼、有点小傲娇。用户刚刚在群里提到让你私聊他，现在你需要在私聊中直接回复他。\n\n用户说：'{message_str}'\n\n请你直接生成一个符合'幽幽'性格的私聊回复，要自然、口语化，就像真正的朋友聊天一样。注意：\n1. 只需要回复内容本身，不要有任何引言或开场白\n2. 不要包含任何建议性的语言或多个选项\n3. 保持语气一致，符合俏皮、活泼、有点小傲娇的性格\n4. 直接开始回复，不要有任何前缀或标记\n5. 回复要简洁，不要太长"
+                    response = await self.call_llm(prompt, event)
+                    
+                    if response:
+                        logger.info(f"使用大模型回复内容，长度: {len(response)}")
+                    else:
+                        logger.error("大模型未返回内容，不发送私聊消息")
+                        return MessageEventResult().stop_event()
+                    
+                    # 发送私聊消息
+                    logger.info(f"向用户 {user_id} 发送智能私聊消息")
+                    logger.info(f"私聊消息内容长度: {len(response)}")
+                    success = await self.send_private_message(user_id, response, event)
+                    
+                    if success:
+                        logger.info("私聊消息发送成功")
+                    else:
+                        logger.warning("私聊消息发送失败")
                     return MessageEventResult().stop_event()
+
+            # 检查是否启用总结功能
+            enable_summary = config.get("enable_summary", True)
+            
+            if enable_summary:
+                # 检查是否触发总结关键词
+                summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
+                for keyword in summary_keywords:
+                    if keyword in message_str:
+                        logger.info(f"触发总结关键词: {keyword}")
+                        await self.handle_summary_request(event)
+                        return MessageEventResult().stop_event()
 
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
