@@ -125,26 +125,24 @@ class MyPlugin(Star):
         try:
             # 使用当前会话的模型
             if event:
-                # 构建LLM请求
+                # 构建LLM请求（移除temperature参数）
                 request = ProviderRequest(
                     prompt=prompt,
-                    model="",  # 使用默认模型
-                    temperature=0.7
+                    model=""  # 使用默认模型
                 )
                 # 发送LLM请求
                 response = await self.context.llm_request(request)
-                logger.debug(f"大模型调用成功，响应长度: {len(response.content) if response else 0}")
+                logger.info(f"大模型调用成功，响应长度: {len(response.content) if response else 0}")
                 return response.content if response else ""
             else:
                 # 即使没有event，也尝试使用默认方式调用大模型
                 try:
                     request = ProviderRequest(
                         prompt=prompt,
-                        model="",  # 使用默认模型
-                        temperature=0.7
+                        model=""  # 使用默认模型
                     )
                     response = await self.context.llm_request(request)
-                    logger.debug(f"无event大模型调用成功，响应长度: {len(response.content) if response else 0}")
+                    logger.info(f"无event大模型调用成功，响应长度: {len(response.content) if response else 0}")
                     return response.content if response else ""
                 except Exception as e:
                     logger.debug(f"无event大模型调用失败: {e}")
@@ -309,23 +307,21 @@ class MyPlugin(Star):
             # 检查是否在群聊中触发
             group_id = event.get_group_id()
             if group_id:
-                # 生成思考内容
-                thinking_prompt = f"用户在群里要求我私聊他，内容是：{message_content}。请生成一个合适的思考。"
-                thinking = await self.call_llm(thinking_prompt, event)
-                logger.debug(f"生成思考内容: {thinking}")
+                # 生成智能回复内容
+                prompt = f"用户在群里说：'你私聊我看看'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                response = await self.call_llm(prompt, event)
+                
+                if not response:
+                    response = "你好，有什么我可以帮助你的吗？"
                 
                 # 发送私聊消息
-                message = f"【私聊消息】\n{message_content}\n\n【思考】\n{thinking}"
                 logger.info(f"向用户 {user_id} 发送私聊消息")
-                success = await self.send_private_message(user_id, message, event)
+                success = await self.send_private_message(user_id, response, event)
                 
                 if success:
-                    # 回复用户在群里的消息
-                    reply_prompt = f"我已经成功向用户发送了私聊消息，内容是：{message_content}。请生成一个简洁的群内回复。"
-                    reply = await self.call_llm(reply_prompt, event)
-                    if not reply:
-                        reply = "已发送私聊消息，请查收"
-                    return event.plain_result(reply)
+                    # 不回复群消息，避免重复
+                    logger.info("私聊消息发送成功，不回复群消息")
+                    return event.plain_result("")
             else:
                 # 私聊中触发，处理管理员回复
                 await self.handle_private_forward(event)
@@ -333,7 +329,7 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"处理私聊请求失败: {e}")
             logger.error(traceback.format_exc())
-            return event.plain_result("处理私聊请求时发生错误")
+            return event.plain_result("")
 
     async def handle_summary_request(self, event: AstrMessageEvent):
         """处理总结请求"""
@@ -455,7 +451,9 @@ class MyPlugin(Star):
                             logger.info(f"使用默认私聊内容: {message_content}")
                     
                     logger.info(f"最终私聊内容: {message_content}")
-                    await self.handle_private_request(event, message_content)
+                    result = await self.handle_private_request(event, message_content)
+                    if result:
+                        yield result
                     return
 
             # 检查是否触发总结关键词
