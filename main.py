@@ -59,6 +59,9 @@ class MyPlugin(Star):
         try:
             webui_config = self.context.get_config()
             if webui_config:
+                # 确保webui_config中有admin_list
+                if "admin_list" not in webui_config or not webui_config["admin_list"]:
+                    webui_config["admin_list"] = self.config.get("admin_list", ["2757808353"])
                 return webui_config
             return self.config
         except Exception as e:
@@ -110,8 +113,12 @@ class MyPlugin(Star):
         admin_list = config.get("admin_list", [])
         # 确保用户ID是字符串类型
         user_id_str = str(user_id)
-        logger.debug(f"检查用户 {user_id_str} 是否为管理员，管理员列表: {admin_list}")
-        return user_id_str in admin_list
+        # 确保admin_list中的元素都是字符串类型
+        admin_list_str = [str(admin) for admin in admin_list]
+        logger.info(f"检查用户 {user_id_str} 是否为管理员，管理员列表: {admin_list_str}")
+        is_admin_result = user_id_str in admin_list_str
+        logger.info(f"用户 {user_id_str} 是管理员: {is_admin_result}")
+        return is_admin_result
 
     async def call_llm(self, prompt, event=None):
         """调用大模型"""
@@ -377,11 +384,11 @@ class MyPlugin(Star):
                 message_str = str(event)
             
             group_id = event.get_group_id()
-            logger.debug(f"收到消息: 用户 {user_id}, 内容: {message_str}, 群: {group_id}")
+            logger.info(f"收到消息: 用户 {user_id}, 内容: {message_str}, 群: {group_id}")
 
             # 检查是否在被禁言的群中
             if group_id and group_id in self.muted_groups:
-                logger.debug(f"群 {group_id} 已被禁言，忽略消息")
+                logger.info(f"群 {group_id} 已被禁言，忽略消息")
                 return
 
             # 缓存用户信息
@@ -390,22 +397,27 @@ class MyPlugin(Star):
                     sender_name = event.get_sender_name()
                     if sender_name:
                         self.user_cache[sender_name] = user_id
-                        logger.debug(f"缓存用户信息: {sender_name} -> {user_id}")
+                        logger.info(f"缓存用户信息: {sender_name} -> {user_id}")
                 except Exception as e:
-                    logger.debug(f"获取发送者名称失败: {e}")
+                    logger.info(f"获取发送者名称失败: {e}")
 
             # 检查是否为管理员
-            if not self.is_admin(user_id):
+            is_admin_result = self.is_admin(user_id)
+            if not is_admin_result:
                 # 即使不是管理员，也检查群员汇报关键词
                 config = self.get_realtime_config()
                 report_keywords = config.get("report_keywords", ["告诉你创造者", "告诉开发者"])
+                logger.info(f"用户 {user_id} 不是管理员，检查群员汇报关键词: {report_keywords}")
                 for keyword in report_keywords:
                     if keyword in message_str:
                         report_content = message_str.split(keyword)[-1].strip()
+                        logger.info(f"触发群员汇报关键词: {keyword}, 内容: {report_content}")
                         await self.handle_report_request(event, report_content)
                         return
-                logger.debug(f"用户 {user_id} 不是管理员，忽略消息")
+                logger.info(f"用户 {user_id} 不是管理员，忽略消息")
                 return
+            else:
+                logger.info(f"用户 {user_id} 是管理员，继续处理消息")
 
             # 检查是否触发禁言事件
             if "禁言" in message_str:
@@ -423,22 +435,26 @@ class MyPlugin(Star):
 
             # 检查是否触发私聊关键词
             private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
+            logger.info(f"检查私聊关键词: {private_keywords}")
             for keyword in private_keywords:
                 if keyword in message_str:
-                    logger.debug(f"触发私聊关键词: {keyword}")
+                    logger.info(f"触发私聊关键词: {keyword}")
                     # 提取消息内容
                     content_match = re.search(r'["\'\`](.+?)["\'\`]', message_str)
                     if content_match:
                         message_content = content_match.group(1)
+                        logger.info(f"从引号中提取私聊内容: {message_content}")
                     else:
                         # 尝试提取关键词后的内容
                         parts = message_str.split(keyword)
                         if len(parts) > 1:
                             message_content = parts[1].strip()
+                            logger.info(f"从关键词后提取私聊内容: {message_content}")
                         else:
                             message_content = "测试私聊功能"
+                            logger.info(f"使用默认私聊内容: {message_content}")
                     
-                    logger.debug(f"私聊内容: {message_content}")
+                    logger.info(f"最终私聊内容: {message_content}")
                     await self.handle_private_request(event, message_content)
                     return
 
