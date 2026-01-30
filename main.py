@@ -23,8 +23,20 @@ class MyPlugin(Star):
 
     async def initialize(self):
         """插件初始化"""
+        # 确保配置文件存在
+        if not os.path.exists(self.config_file):
+            logger.info("配置文件不存在，创建默认配置")
+            self.config = self._load_config()
+        else:
+            logger.info("配置文件存在，加载配置")
+            self.config = self._load_config()
+        
         await self._load_webui_config()
         logger.info("自动私聊插件初始化完成")
+        logger.info(f"管理员列表: {self.config.get('admin_list', [])}")
+        logger.info(f"私聊关键词: {self.config.get('private_keywords', [])}")
+        logger.info(f"总结关键词: {self.config.get('summary_keywords', [])}")
+        logger.info(f"汇报关键词: {self.config.get('report_keywords', [])}")
 
     async def _load_webui_config(self):
         """从WebUI加载配置"""
@@ -96,7 +108,10 @@ class MyPlugin(Star):
         """检测用户是否为管理员"""
         config = self.get_realtime_config()
         admin_list = config.get("admin_list", [])
-        return user_id in admin_list
+        # 确保用户ID是字符串类型
+        user_id_str = str(user_id)
+        logger.debug(f"检查用户 {user_id_str} 是否为管理员，管理员列表: {admin_list}")
+        return user_id_str in admin_list
 
     async def call_llm(self, prompt, event=None):
         """调用大模型"""
@@ -151,6 +166,12 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             logger.error(traceback.format_exc())
+            # 检查是否是禁言错误
+            error_str = str(e)
+            if "禁言" in error_str or "120" in error_str or "EventChecker Failed" in error_str:
+                logger.warning(f"检测到禁言错误: {e}")
+                if event:
+                    await self.handle_mute_event(event)
             await self.send_error_message(None, "send_private_message", str(e), traceback.format_exc())
             return False
 
@@ -181,7 +202,16 @@ class MyPlugin(Star):
         try:
             group_id = event.get_group_id()
             if not group_id:
-                return
+                # 尝试从事件中获取更多信息
+                try:
+                    # 检查事件的其他属性
+                    if hasattr(event, 'message_obj') and hasattr(event.message_obj, 'group_id'):
+                        group_id = event.message_obj.group_id
+                except Exception as e:
+                    logger.debug(f"获取群ID失败: {e}")
+                if not group_id:
+                    logger.warning("无法获取群ID，禁言事件处理失败")
+                    return
 
             # 添加到被禁言群列表
             self.muted_groups.add(group_id)
@@ -198,7 +228,26 @@ class MyPlugin(Star):
                 
                 # 发送被禁言信息
                 message = f"【被禁言通知】\n我在群 {group_id} 中被禁言了。\n\n【思考】\n{thinking}"
-                await self.send_private_message(admin_id, message, event)
+                # 使用直接的消息发送方式，避免递归调用
+                try:
+                    platform_id = "qq"
+                    if event:
+                        platform_id = event.get_platform_id()
+
+                    session = MessageSession(
+                        platform_name=platform_id,
+                        message_type=MessageType.FRIEND_MESSAGE,
+                        session_id=str(admin_id)
+                    )
+
+                    message_chain = MessageChain().message(message)
+                    success = await self.context.send_message(session, message_chain)
+                    if success:
+                        logger.info(f"成功向管理员 {admin_id} 发送禁言通知")
+                    else:
+                        logger.warning(f"向管理员 {admin_id} 发送禁言通知失败")
+                except Exception as e:
+                    logger.error(f"发送禁言通知失败: {e}")
 
         except Exception as e:
             logger.error(f"处理禁言事件失败: {e}")
@@ -207,16 +256,23 @@ class MyPlugin(Star):
     async def handle_report_request(self, event: AstrMessageEvent, report_content):
         """处理群员汇报请求"""
         try:
+            user_id = event.get_sender_id()
+            group_id = event.get_group_id()
+            logger.info(f"处理群员汇报请求: 用户 {user_id}, 群 {group_id}, 内容: {report_content}")
+            
             config = self.get_realtime_config()
             admin_list = config.get("admin_list", [])
+            logger.info(f"向管理员列表发送汇报: {admin_list}")
             
             for admin_id in admin_list:
                 # 生成思考内容
                 thinking_prompt = f"群员要求我向管理员汇报：{report_content}。请生成一个合适的汇报消息。"
                 thinking = await self.call_llm(thinking_prompt, event)
+                logger.debug(f"生成思考内容: {thinking}")
                 
                 # 发送汇报信息
                 message = f"【群员汇报】\n{report_content}\n\n【思考】\n{thinking}"
+                logger.info(f"向管理员 {admin_id} 发送群员汇报")
                 await self.send_private_message(admin_id, message, event)
 
         except Exception as e:
@@ -227,13 +283,16 @@ class MyPlugin(Star):
         """处理私聊请求"""
         try:
             user_id = event.get_sender_id()
+            logger.info(f"处理私聊请求: 用户 {user_id}, 内容: {message_content}")
             
             # 生成思考内容
             thinking_prompt = f"管理员要求我发送私聊消息：{message_content}。请生成一个合适的回复。"
             thinking = await self.call_llm(thinking_prompt, event)
+            logger.debug(f"生成思考内容: {thinking}")
             
             # 发送私聊消息
             message = f"【私聊消息】\n{message_content}\n\n【思考】\n{thinking}"
+            logger.info(f"向用户 {user_id} 发送私聊消息")
             await self.send_private_message(user_id, message, event)
 
         except Exception as e:
@@ -245,25 +304,32 @@ class MyPlugin(Star):
         try:
             user_id = event.get_sender_id()
             group_id = event.get_group_id()
+            logger.info(f"处理总结请求: 用户 {user_id}, 群 {group_id}")
             
             if not group_id:
+                logger.warning("没有群ID，无法处理总结请求")
                 return
 
             # 获取群消息历史
             message_history = self.config.get("group_message_history", {}).get(group_id, [])
+            logger.info(f"群消息历史数量: {len(message_history)}")
             if not message_history:
+                logger.warning("没有群消息历史，无法处理总结请求")
                 return
 
             # 生成思考内容
             thinking_prompt = f"请总结以下群消息：\n{message_history[-20:]}\n\n请提供一个简洁的总结。"
             thinking = await self.call_llm(thinking_prompt, event)
+            logger.debug(f"生成思考内容: {thinking}")
             
             # 生成总结
             summary_prompt = f"基于以下思考，生成群消息总结：\n{thinking}"
             summary = await self.call_llm(summary_prompt, event)
+            logger.info(f"生成总结内容: {summary}")
             
             # 发送总结
             message = f"【群消息总结】\n{summary}\n\n【思考】\n{thinking}"
+            logger.info(f"向用户 {user_id} 发送群消息总结")
             await self.send_private_message(user_id, message, event)
 
         except Exception as e:
@@ -275,8 +341,14 @@ class MyPlugin(Star):
         """处理所有消息"""
         try:
             user_id = event.get_sender_id()
-            message_str = event.message_str
+            # 尝试不同的方式获取消息内容
+            try:
+                message_str = event.message_str
+            except AttributeError:
+                message_str = str(event)
+            
             group_id = event.get_group_id()
+            logger.debug(f"收到消息: 用户 {user_id}, 内容: {message_str}, 群: {group_id}")
 
             # 检查是否在被禁言的群中
             if group_id and group_id in self.muted_groups:
@@ -285,12 +357,24 @@ class MyPlugin(Star):
 
             # 缓存用户信息
             if group_id:
-                sender_name = event.get_sender_name()
-                if sender_name:
-                    self.user_cache[sender_name] = user_id
+                try:
+                    sender_name = event.get_sender_name()
+                    if sender_name:
+                        self.user_cache[sender_name] = user_id
+                        logger.debug(f"缓存用户信息: {sender_name} -> {user_id}")
+                except Exception as e:
+                    logger.debug(f"获取发送者名称失败: {e}")
 
             # 检查是否为管理员
             if not self.is_admin(user_id):
+                # 即使不是管理员，也检查群员汇报关键词
+                config = self.get_realtime_config()
+                report_keywords = config.get("report_keywords", ["告诉你创造者", "告诉开发者"])
+                for keyword in report_keywords:
+                    if keyword in message_str:
+                        report_content = message_str.split(keyword)[-1].strip()
+                        await self.handle_report_request(event, report_content)
+                        return
                 logger.debug(f"用户 {user_id} 不是管理员，忽略消息")
                 return
 
@@ -312,8 +396,9 @@ class MyPlugin(Star):
             private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
             for keyword in private_keywords:
                 if keyword in message_str:
+                    logger.debug(f"触发私聊关键词: {keyword}")
                     # 提取消息内容
-                    content_match = re.search(r'[\"\'\`](.+?)[\"\'\`]', message_str)
+                    content_match = re.search(r'["\'\`](.+?)["\'\`]', message_str)
                     if content_match:
                         message_content = content_match.group(1)
                     else:
@@ -322,16 +407,17 @@ class MyPlugin(Star):
                         if len(parts) > 1:
                             message_content = parts[1].strip()
                         else:
-                            message_content = ""
+                            message_content = "测试私聊功能"
                     
-                    if message_content:
-                        await self.handle_private_request(event, message_content)
+                    logger.debug(f"私聊内容: {message_content}")
+                    await self.handle_private_request(event, message_content)
                     return
 
             # 检查是否触发总结关键词
             summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
             for keyword in summary_keywords:
                 if keyword in message_str:
+                    logger.debug(f"触发总结关键词: {keyword}")
                     await self.handle_summary_request(event)
                     return
 

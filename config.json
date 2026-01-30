@@ -1,0 +1,24 @@
+{
+  "admin_list": [
+    "2757808353"
+  ],
+  "private_keywords": [
+    "私聊",
+    "私信",
+    "私发",
+    "发给我"
+  ],
+  "summary_keywords": [
+    "总结",
+    "汇总",
+    "总结一下"
+  ],
+  "report_keywords": [
+    "告诉你创造者",
+    "告诉开发者"
+  ],
+  "error_format": "【错误信息】\n方法: {method}\n错误: {error}",
+  "report_status": false,
+  "private_send_id": "",
+  "group_message_history": {}
+}
