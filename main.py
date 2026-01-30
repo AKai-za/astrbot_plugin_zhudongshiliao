@@ -173,7 +173,7 @@ class MyPlugin(Star):
             logger.error(f"发送私聊消息失败: {e}")
             logger.error(traceback.format_exc())
             error_str = str(e)
-            if "禁言" in error_str or "120" in error_str or "EventChecker Failed" in error_str:
+            if "禁言" in error_str or "120" in error_str or "EventChecker Failed" in error_str or "1200" in error_str:
                 logger.warning(f"检测到禁言错误: {e}")
                 if event:
                     await self.handle_mute_event(event)
@@ -409,26 +409,35 @@ class MyPlugin(Star):
 
             private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
             logger.info(f"检查私聊关键词: {private_keywords}")
+            logger.info(f"消息内容: '{message_str}'")
+            
+            # 检查是否包含任何私聊关键词
+            found_keyword = False
             for keyword in private_keywords:
+                logger.info(f"检查关键词: '{keyword}' 是否在消息中")
                 if keyword in message_str:
                     logger.info(f"触发私聊关键词: {keyword}")
-                    message_content = "测试私聊功能"
-                    try:
-                        content_match = re.search(r'["\'\`](.+?)["\'\`]', message_str)
-                        if content_match:
-                            message_content = content_match.group(1)
-                            logger.info(f"从引号中提取私聊内容: {message_content}")
-                        else:
-                            parts = message_str.split(keyword)
-                            if len(parts) > 1:
-                                message_content = parts[1].strip()
-                                logger.info(f"从关键词后提取私聊内容: {message_content}")
-                    except Exception as e:
-                        logger.error(f"提取私聊内容失败: {e}")
+                    found_keyword = True
                     
-                    logger.info(f"最终私聊内容: {message_content}")
-                    await self.handle_private_request(event, message_content)
+                    # 生成智能回复内容
+                    prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                    response = await self.call_llm(prompt, event)
+                    
+                    if not response:
+                        response = "你好，有什么我可以帮助你的吗？"
+                    
+                    # 发送私聊消息
+                    logger.info(f"向用户 {user_id} 发送私聊消息: {response}")
+                    success = await self.send_private_message(user_id, response, event)
+                    
+                    if success:
+                        logger.info("私聊消息发送成功")
+                    else:
+                        logger.warning("私聊消息发送失败")
                     return
+            
+            if not found_keyword:
+                logger.info("未找到私聊关键词")
 
             summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
             for keyword in summary_keywords:
