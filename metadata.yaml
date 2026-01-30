@@ -1,6 +1,6 @@
 name: astrbot_plugin_zhudongshiliao
 display_name: 自动私聊插件
 desc: 自动私聊插件，当用户发送消息时，自动私聊用户。支持群消息总结、错误信息转发、禁言处理、群员汇报等功能。
-version: v1.4.36
+version: v1.4.37
 author: 引灯续昼
 repo: https://github.com/HLC2757808353/astrbot_plugin_zhudongshiliao

@@ -167,6 +167,33 @@ class MyPlugin(Star):
                     response = llm_resp.text
                     logger.info(f"通过text属性获取大模型回复，长度: {len(response)}")
                     return response
+                elif hasattr(llm_resp, 'result_chain'):
+                    # 从result_chain中提取Plain文本
+                    result_chain = llm_resp.result_chain
+                    logger.info(f"通过result_chain获取大模型回复")
+                    if hasattr(result_chain, 'chain'):
+                        for item in result_chain.chain:
+                            if hasattr(item, 'text'):
+                                response = item.text
+                                logger.info(f"从Plain对象获取回复内容，长度: {len(response)}")
+                                # 尝试从多个选项中提取一个
+                                if '或者' in response or '**' in response:
+                                    # 提取第一个回复选项
+                                    import re
+                                    matches = re.findall(r'["“]([^"]*)["”]', response)
+                                    if matches:
+                                        response = matches[0]
+                                        logger.info(f"从多个选项中提取第一个回复: {response}")
+                                    else:
+                                        # 尝试其他方式提取
+                                        lines = response.split('\n')
+                                        for line in lines:
+                                            line = line.strip()
+                                            if line and not line.startswith('**') and not line.startswith('好的'):
+                                                response = line
+                                                logger.info(f"从多行文本中提取回复: {response}")
+                                                break
+                                return response
                 elif isinstance(llm_resp, str):
                     logger.info(f"大模型直接返回字符串，长度: {len(llm_resp)}")
                     return llm_resp
@@ -595,7 +622,7 @@ class MyPlugin(Star):
             # 对于管理员消息，即使不包含唤醒词也处理
             if group_id and not contains_wake_word and not self.is_admin(user_id):
                 logger.debug(f"消息不包含唤醒词且用户不是管理员，忽略")
-                return MessageEventResult()
+                return MessageEventResult().stop_event()
 
             # 检查是否触发群员汇报（非管理员也可触发）
             config = self.get_realtime_config()
@@ -605,19 +632,19 @@ class MyPlugin(Star):
                     report_content = message_str.split(keyword)[-1].strip()
                     logger.info(f"触发群员汇报关键词: {keyword}, 内容: {report_content}")
                     await self.handle_report_request(event, report_content)
-                    return MessageEventResult()
+                    return MessageEventResult().stop_event()
             
             # 只有管理员可以触发其他功能
             if not self.is_admin(user_id):
                 logger.info(f"用户 {user_id} 不是管理员，忽略消息")
-                return MessageEventResult()
+                return MessageEventResult().stop_event()
             else:
                 logger.info(f"用户 {user_id} 是管理员，继续处理消息")
 
             # 检查是否触发禁言事件
             if "禁言" in message_str:
                 await self.handle_mute_event(event)
-                return MessageEventResult()
+                return MessageEventResult().stop_event()
 
             # 检查是否触发私聊关键词
             private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
@@ -632,7 +659,7 @@ class MyPlugin(Star):
                 logger.info(f"触发私聊功能: {'关键词触发' if has_private_keyword else '管理员消息'}")
                 
                 # 生成智能回复内容（只在需要时调用大模型）
-                prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                prompt = f"你是一个叫'幽幽'的AI助手，性格俏皮、活泼、有点小傲娇。用户刚刚在群里提到让你私聊他，现在你需要在私聊中直接回复他。\n\n用户说：'{message_str}'\n\n请你直接生成一个符合'幽幽'性格的私聊回复，要自然、口语化，就像真正的朋友聊天一样。注意：\n1. 只需要回复内容本身，不要有任何引言或开场白\n2. 不要包含任何建议性的语言或多个选项\n3. 保持语气一致，符合俏皮、活泼、有点小傲娇的性格\n4. 直接开始回复，不要有任何前缀或标记\n5. 回复要简洁，不要太长"
                 response = await self.call_llm(prompt, event)
                 
                 if response:
@@ -650,7 +677,7 @@ class MyPlugin(Star):
                     logger.info("私聊消息发送成功")
                 else:
                     logger.warning("私聊消息发送失败")
-                return MessageEventResult()
+                return MessageEventResult().stop_event()
 
             # 检查是否触发总结关键词
             summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
@@ -658,7 +685,7 @@ class MyPlugin(Star):
                 if keyword in message_str:
                     logger.info(f"触发总结关键词: {keyword}")
                     await self.handle_summary_request(event)
-                    return MessageEventResult()
+                    return MessageEventResult().stop_event()
 
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
