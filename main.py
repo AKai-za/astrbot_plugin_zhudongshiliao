@@ -426,20 +426,75 @@ class MyPlugin(Star):
             # 尝试获取用户ID
             user_id = None
             try:
+                # 尝试多种获取用户ID的方法
                 if hasattr(event, 'get_sender_id'):
-                    user_id = event.get_sender_id()
-                elif hasattr(event, 'sender_id'):
+                    try:
+                        user_id = event.get_sender_id()
+                        logger.debug(f"通过get_sender_id获取用户ID: {user_id}")
+                    except Exception as e:
+                        logger.debug(f"get_sender_id失败: {e}")
+                
+                if user_id is None and hasattr(event, 'sender_id'):
                     user_id = event.sender_id
-                elif hasattr(event, 'user_id'):
+                    logger.debug(f"通过sender_id获取用户ID: {user_id}")
+                
+                if user_id is None and hasattr(event, 'user_id'):
                     user_id = event.user_id
-                elif hasattr(event, 'user') and hasattr(event.user, 'id'):
+                    logger.debug(f"通过user_id获取用户ID: {user_id}")
+                
+                if user_id is None and hasattr(event, 'user') and hasattr(event.user, 'id'):
                     user_id = event.user.id
+                    logger.debug(f"通过user.id获取用户ID: {user_id}")
+                
+                if user_id is None and hasattr(event, 'message_obj'):
+                    try:
+                        if hasattr(event.message_obj, 'user_id'):
+                            user_id = event.message_obj.user_id
+                            logger.debug(f"通过message_obj.user_id获取用户ID: {user_id}")
+                        elif hasattr(event.message_obj, 'sender'):
+                            user_id = event.message_obj.sender
+                            logger.debug(f"通过message_obj.sender获取用户ID: {user_id}")
+                    except Exception as e:
+                        logger.debug(f"从message_obj获取用户ID失败: {e}")
+                
+                # 特殊处理：从事件对象的属性中直接查找ID相关属性
+                if user_id is None:
+                    # 遍历事件对象的所有属性，查找可能的ID
+                    for attr_name in dir(event):
+                        if 'id' in attr_name.lower() or 'user' in attr_name.lower():
+                            try:
+                                attr_value = getattr(event, attr_name)
+                                if attr_value and isinstance(attr_value, (str, int)):
+                                    user_id = attr_value
+                                    logger.debug(f"通过{attr_name}获取用户ID: {user_id}")
+                                    break
+                            except Exception as e:
+                                pass
                 
                 if user_id is None:
                     logger.warning("获取到的用户ID为None")
                     logger.warning(f"事件对象类型: {type(event)}")
                     logger.warning(f"事件对象属性: {dir(event)}")
+                    
+                    # 尝试获取事件对象的字符串表示，可能包含用户信息
+                    try:
+                        event_str = str(event)
+                        logger.warning(f"事件对象字符串: {event_str}")
+                        
+                        # 尝试从字符串中提取数字ID
+                        import re
+                        ids = re.findall(r'\d{5,}', event_str)
+                        if ids:
+                            user_id = ids[0]
+                            logger.warning(f"从事件字符串中提取到用户ID: {user_id}")
+                    except Exception as e:
+                        logger.warning(f"获取事件字符串失败: {e}")
+                
+                if user_id is None:
+                    logger.warning("仍然无法获取用户ID，返回")
                     return
+                else:
+                    logger.info(f"成功获取用户ID: {user_id}")
             except Exception as e:
                 logger.error(f"获取用户ID失败: {e}")
                 logger.error(traceback.format_exc())
@@ -450,16 +505,25 @@ class MyPlugin(Star):
             try:
                 if hasattr(event, 'message_str'):
                     message_str = event.message_str
+                    logger.debug(f"通过message_str获取消息内容: {message_str}")
                 elif hasattr(event, 'message'):
                     message_str = str(event.message)
+                    logger.debug(f"通过message获取消息内容: {message_str}")
                 elif hasattr(event, 'content'):
                     message_str = str(event.content)
+                    logger.debug(f"通过content获取消息内容: {message_str}")
                 elif hasattr(event, 'raw_message'):
                     message_str = str(event.raw_message)
+                    logger.debug(f"通过raw_message获取消息内容: {message_str}")
+                elif hasattr(event, 'message_obj') and hasattr(event.message_obj, 'content'):
+                    message_str = str(event.message_obj.content)
+                    logger.debug(f"通过message_obj.content获取消息内容: {message_str}")
                 
                 if not message_str:
                     logger.warning("获取到的消息内容为空")
                     return
+                else:
+                    logger.info(f"成功获取消息内容: '{message_str}'")
             except Exception as e:
                 logger.error(f"获取消息内容失败: {e}")
                 logger.error(traceback.format_exc())
@@ -469,11 +533,29 @@ class MyPlugin(Star):
             group_id = None
             try:
                 if hasattr(event, 'get_group_id'):
-                    group_id = event.get_group_id()
-                elif hasattr(event, 'group_id'):
+                    try:
+                        group_id = event.get_group_id()
+                        logger.debug(f"通过get_group_id获取群ID: {group_id}")
+                    except Exception as e:
+                        logger.debug(f"get_group_id失败: {e}")
+                
+                if group_id is None and hasattr(event, 'group_id'):
                     group_id = event.group_id
-                elif hasattr(event, 'group') and hasattr(event.group, 'id'):
+                    logger.debug(f"通过group_id获取群ID: {group_id}")
+                
+                if group_id is None and hasattr(event, 'group') and hasattr(event.group, 'id'):
                     group_id = event.group.id
+                    logger.debug(f"通过group.id获取群ID: {group_id}")
+                
+                if group_id is None and hasattr(event, 'message_obj'):
+                    try:
+                        if hasattr(event.message_obj, 'group_id'):
+                            group_id = event.message_obj.group_id
+                            logger.debug(f"通过message_obj.group_id获取群ID: {group_id}")
+                    except Exception as e:
+                        logger.debug(f"从message_obj获取群ID失败: {e}")
+                
+                logger.info(f"成功获取群ID: {group_id}")
             except Exception as e:
                 logger.error(f"获取群ID失败: {e}")
                 logger.error(traceback.format_exc())
