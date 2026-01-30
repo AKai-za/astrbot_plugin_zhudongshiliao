@@ -154,8 +154,34 @@ class MyPlugin(Star):
             
             # 调用大模型生成回复
             llm_resp = await provider.text_chat(prompt=prompt)
-            logger.info(f"大模型调用成功，响应长度: {len(llm_resp.content) if llm_resp else 0}")
-            return llm_resp.content if llm_resp else ""
+            logger.info(f"大模型调用返回对象类型: {type(llm_resp)}")
+            
+            # 尝试多种方式获取回复内容
+            if llm_resp:
+                # 检查LLMResponse对象的属性
+                if hasattr(llm_resp, 'content'):
+                    response = llm_resp.content
+                    logger.info(f"通过content属性获取大模型回复，长度: {len(response)}")
+                    return response
+                elif hasattr(llm_resp, 'text'):
+                    response = llm_resp.text
+                    logger.info(f"通过text属性获取大模型回复，长度: {len(response)}")
+                    return response
+                elif isinstance(llm_resp, str):
+                    logger.info(f"大模型直接返回字符串，长度: {len(llm_resp)}")
+                    return llm_resp
+                else:
+                    logger.info(f"大模型返回未知类型: {llm_resp}")
+                    # 尝试将对象转换为字符串
+                    try:
+                        response = str(llm_resp)
+                        logger.info(f"转换为字符串后长度: {len(response)}")
+                        return response
+                    except:
+                        pass
+            
+            logger.warning("大模型未返回有效内容")
+            return ""
         except Exception as e:
             logger.error(f"调用大模型失败: {e}")
             logger.error(traceback.format_exc())
@@ -560,7 +586,7 @@ class MyPlugin(Star):
             # 检查是否在被禁言的群中
             if group_id and group_id in self.muted_groups:
                 logger.info(f"群 {group_id} 已被禁言，忽略消息")
-                return
+                return MessageEventResult()
             
             # 检查是否包含唤醒词（如机器人名称）
             wake_words = ["幽幽", "洛幽幽"]
@@ -569,7 +595,7 @@ class MyPlugin(Star):
             # 对于管理员消息，即使不包含唤醒词也处理
             if group_id and not contains_wake_word and not self.is_admin(user_id):
                 logger.debug(f"消息不包含唤醒词且用户不是管理员，忽略")
-                return
+                return MessageEventResult()
 
             # 检查是否触发群员汇报（非管理员也可触发）
             config = self.get_realtime_config()
@@ -579,28 +605,24 @@ class MyPlugin(Star):
                     report_content = message_str.split(keyword)[-1].strip()
                     logger.info(f"触发群员汇报关键词: {keyword}, 内容: {report_content}")
                     await self.handle_report_request(event, report_content)
-                    return MessageEventResult(handled=True)
+                    return MessageEventResult()
             
             # 只有管理员可以触发其他功能
             if not self.is_admin(user_id):
                 logger.info(f"用户 {user_id} 不是管理员，忽略消息")
-                return
+                return MessageEventResult()
             else:
                 logger.info(f"用户 {user_id} 是管理员，继续处理消息")
 
             # 检查是否触发禁言事件
             if "禁言" in message_str:
                 await self.handle_mute_event(event)
-                return MessageEventResult(handled=True)
+                return MessageEventResult()
 
             # 检查是否触发私聊关键词
             private_keywords = config.get("private_keywords", ["私聊", "私信", "私发", "发给我"])
             logger.info(f"检查私聊关键词: {private_keywords}")
             logger.info(f"消息内容: '{message_str}'")
-            
-            # 生成智能回复内容（统一调用大模型一次）
-            prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
-            response = await self.call_llm(prompt, event)
             
             # 检查是否包含任何私聊关键词或是否为管理员
             has_private_keyword = any(keyword in message_str for keyword in private_keywords)
@@ -609,9 +631,15 @@ class MyPlugin(Star):
             if has_private_keyword or is_admin_user:
                 logger.info(f"触发私聊功能: {'关键词触发' if has_private_keyword else '管理员消息'}")
                 
-                if not response:
-                    logger.warning("大模型未返回内容，使用默认回复")
-                    response = "我理解你的意思了，我们可以在私聊中继续交流。"
+                # 生成智能回复内容（只在需要时调用大模型）
+                prompt = f"用户在群里说：'{message_str}'，现在我需要通过私聊回复他。请生成一个友好、自然的私聊回复，不需要提及群聊的事情，就像我们在私聊中正常对话一样。"
+                response = await self.call_llm(prompt, event)
+                
+                if response:
+                    logger.info(f"使用大模型回复内容，长度: {len(response)}")
+                else:
+                    logger.error("大模型未返回内容，不发送私聊消息")
+                    return MessageEventResult()
                 
                 # 发送私聊消息
                 logger.info(f"向用户 {user_id} 发送智能私聊消息")
@@ -622,7 +650,7 @@ class MyPlugin(Star):
                     logger.info("私聊消息发送成功")
                 else:
                     logger.warning("私聊消息发送失败")
-                return MessageEventResult(handled=True)
+                return MessageEventResult()
 
             # 检查是否触发总结关键词
             summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
@@ -630,7 +658,7 @@ class MyPlugin(Star):
                 if keyword in message_str:
                     logger.info(f"触发总结关键词: {keyword}")
                     await self.handle_summary_request(event)
-                    return MessageEventResult(handled=True)
+                    return MessageEventResult()
 
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
