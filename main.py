@@ -209,7 +209,15 @@ class MyPlugin(Star):
             if private_send_id:
                 await self.send_private_message(private_send_id, error_info)
             elif event:
-                return event.plain_result(error_info)
+                # 确保event对象有plain_result方法
+                try:
+                    return event.plain_result(error_info)
+                except AttributeError:
+                    logger.error(f"event对象没有plain_result方法")
+                    # 尝试直接发送错误信息到群里
+                    if hasattr(event, 'get_group_id') and event.get_group_id():
+                        await self.send_private_message(event.get_sender_id(), error_info)
+                    return None
 
         except Exception as e:
             logger.error(f"发送错误信息失败: {e}")
@@ -372,19 +380,40 @@ class MyPlugin(Star):
     async def on_all_messages(self, event: AstrMessageEvent, *args, **kwargs):
         """处理所有消息"""
         try:
-            user_id = event.get_sender_id()
+            # 尝试获取用户ID
+            try:
+                user_id = event.get_sender_id()
+            except AttributeError as e:
+                logger.error(f"获取用户ID失败: {e}")
+                return
+            
             # 尝试不同的方式获取消息内容
             try:
                 message_str = event.message_str
             except AttributeError:
                 message_str = str(event)
             
-            group_id = event.get_group_id()
+            # 尝试获取群ID
+            try:
+                group_id = event.get_group_id()
+            except AttributeError:
+                group_id = None
+            
             logger.info(f"收到消息: 用户 {user_id}, 内容: {message_str}, 群: {group_id}")
 
             # 检查是否在被禁言的群中
             if group_id and group_id in self.muted_groups:
                 logger.info(f"群 {group_id} 已被禁言，忽略消息")
+                return
+            
+            # 检查是否包含唤醒词（如机器人名称）
+            # 这里假设唤醒词是机器人的名称，如"幽幽"
+            wake_words = ["幽幽", "洛幽幽"]
+            contains_wake_word = any(wake_word in message_str for wake_word in wake_words)
+            
+            # 如果是群消息且不包含唤醒词，直接返回
+            if group_id and not contains_wake_word:
+                logger.debug(f"消息不包含唤醒词，忽略")
                 return
 
             # 缓存用户信息
@@ -460,16 +489,17 @@ class MyPlugin(Star):
             summary_keywords = config.get("summary_keywords", ["总结", "汇总", "总结一下"])
             for keyword in summary_keywords:
                 if keyword in message_str:
-                    logger.debug(f"触发总结关键词: {keyword}")
+                    logger.info(f"触发总结关键词: {keyword}")
                     await self.handle_summary_request(event)
                     return
 
         except Exception as e:
             logger.error(f"处理消息失败: {e}")
             logger.error(traceback.format_exc())
-            result = await self.send_error_message(event, "on_all_messages", str(e), traceback.format_exc())
-            if result:
-                yield result
+            # 发送错误信息，但不返回结果，避免在群里重复回复
+            await self.send_error_message(event, "on_all_messages", str(e), traceback.format_exc())
+            # 直接返回，不yield结果，避免在群里显示错误信息
+            return
 
     async def handle_private_forward(self, event: AstrMessageEvent):
         """处理私聊消息转接"""
