@@ -366,7 +366,7 @@ class MyPlugin(Star):
             logger.error(traceback.format_exc())
 
     @event_message_type(EventMessageType.ALL)
-    async def on_all_messages(self, event: AstrMessageEvent):
+    async def on_all_messages(self, event: AstrMessageEvent, *args, **kwargs):
         """处理所有消息"""
         try:
             user_id = event.get_sender_id()
@@ -513,7 +513,7 @@ class MyPlugin(Star):
             return event.plain_result("处理私聊消息时发生错误，请稍后再试。")
 
     @event_message_type(EventMessageType.PRIVATE)
-    async def on_private_message(self, event: AstrMessageEvent):
+    async def on_private_message(self, event: AstrMessageEvent, *args, **kwargs):
         """处理私聊消息"""
         return await self.handle_private_forward(event)
 
