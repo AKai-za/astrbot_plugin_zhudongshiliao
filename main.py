@@ -2,7 +2,6 @@ from astrbot.api.event import AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
-import os
 
 @register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "2.0.0")
 class MyPlugin(Star):
@@ -80,3 +79,6 @@ class MyPlugin(Star):
         admin_id = config.get("admin_id", "2757808353")
         enable_sue = config.get("enable_sue", True)
         return event.plain_result(f"管理员ID: {admin_id}\n告状功能: {'开启' if enable_sue else '关闭'}")
+    
+    async def terminate(self):
+        pass
