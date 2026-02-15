@@ -2,6 +2,7 @@ from astrbot.api.event import AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter
 from astrbot.api.event import MessageChain
+from astrbot.api.message_components import Plain
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
@@ -30,7 +31,8 @@ class MyPlugin(Star):
             message_type=MessageType.FRIEND_MESSAGE,
             session_id=user_id_str
         )
-        message_chain = MessageChain().message(message)
+        message_chain = MessageChain()
+        message_chain.chain = [Plain(message)]
         await self.context.send_message(session, message_chain)
     
     @filter.llm_tool(name="private_message")
