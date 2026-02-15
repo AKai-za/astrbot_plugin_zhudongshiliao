@@ -6,7 +6,7 @@ from astrbot.api.message_components import Plain
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "2.0.0")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.1.4")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -106,7 +106,7 @@ class MyPlugin(Star):
         告状工具 - 向管理员发送告状消息
         
         Args:
-            content(string): 告状内容
+            content(string): 告状内容(要说清楚发生的地点以及具体是谁)
         """
         config = self.context.get_config()
         if config.get("enable_sue", True):
