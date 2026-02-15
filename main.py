@@ -6,7 +6,7 @@ from astrbot.api.message_components import Plain
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.1.4")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.2.0")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -61,48 +61,12 @@ class MyPlugin(Star):
             # 确保群ID是字符串
             group_id_str = str(group_id)
             
-            # 尝试通过事件的会话信息发送
-            if event and hasattr(event, 'reply'):
-                try:
-                    # 尝试通过事件回复发送群消息
-                    await event.reply(content, group_id=group_id_str)
-                    return event.plain_result("群消息发送成功1")
-                except Exception as e:
-                    pass
-            
-            # 尝试使用平台特定的发送方式
+            # 使用平台特定的发送方式（aiocqhttp）
             if hasattr(event, 'bot') and hasattr(event.bot, 'send_group_msg'):
-                try:
-                    # 直接使用aiocqhttp的API发送群消息
-                    await event.bot.send_group_msg(group_id=group_id_str, message=content)
-                    return event.plain_result("群消息发送成功2")
-                except Exception as e:
-                    return event.plain_result(f"群消息发送失败：{str(e)}")
-            
-            # 尝试通过上下文发送
-            if hasattr(self.context, 'send_group_message'):
-                try:
-                    success = await self.context.send_group_message(group_id_str, content)
-                    if success:
-                        return event.plain_result("群消息发送成功3")
-                    else:
-                        return event.plain_result("群消息发送失败：上下文发送失败")
-                except Exception as e:
-                    return event.plain_result(f"群消息发送失败：{str(e)}")
-            
-            # 最后的尝试：使用MessageSession
-            session = MessageSession(
-                platform_name="qq",
-                message_type=MessageType.GROUP_MESSAGE,
-                session_id=group_id_str
-            )
-            message_chain = MessageChain()
-            message_chain.chain = [Plain(content)]
-            success = await self.context.send_message(session, message_chain)
-            if success:
-                return event.plain_result("群消息发送成功4")
+                await event.bot.send_group_msg(group_id=group_id_str, message=content)
+                return event.plain_result("群消息发送成功")
             else:
-                return event.plain_result("群消息发送失败：会话发送失败")
+                return event.plain_result("群消息发送失败：不支持的平台或方法")
                 
         except Exception as e:
             # 捕获所有异常并返回详细错误信息
