@@ -3,40 +3,8 @@
     "description": "管理员ID列表",
     "type": "list",
     "default": ["2757808353"],
-    "hint": "管理员可以接收错误信息和告状消息，填写QQ号",
+    "hint": "管理员ID列表，用于接收通过工具发送的消息",
     "editable": true,
     "display_name": "管理员列表"
-  },
-  "enable_private_chat": {
-    "description": "启用私聊功能",
-    "type": "bool",
-    "default": true,
-    "hint": "是否启用私聊功能，当大模型识别到需要私聊时触发",
-    "editable": true,
-    "display_name": "启用私聊功能"
-  },
-  "enable_sue": {
-    "description": "启用告状功能",
-    "type": "bool",
-    "default": true,
-    "hint": "是否启用告状功能，当bot被辱骂时会私发给管理员",
-    "editable": true,
-    "display_name": "启用告状功能"
-  },
-  "sue_keywords": {
-    "description": "告状关键词",
-    "type": "list",
-    "default": ["辱骂", "欺负", "骂", "侮辱", "攻击"],
-    "hint": "当消息中包含这些关键词时，可能触发告状功能（最终由大模型判断）",
-    "editable": true,
-    "display_name": "告状关键词"
-  },
-  "error_format": {
-    "description": "错误信息格式",
-    "type": "string",
-    "default": "【错误信息】\n方法: {method}\n错误: {error}",
-    "hint": "错误信息的显示格式，支持 {method}、{error} 占位符",
-    "editable": true,
-    "display_name": "错误信息格式"
   }
 }
