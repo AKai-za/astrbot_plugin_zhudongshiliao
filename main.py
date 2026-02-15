@@ -61,28 +61,52 @@ class MyPlugin(Star):
             # 确保群ID是字符串
             group_id_str = str(group_id)
             
-            # 构建消息链
-            message_chain = MessageChain()
-            message_chain.chain = [Plain(content)]
+            # 尝试通过事件的会话信息发送
+            if event and hasattr(event, 'reply'):
+                try:
+                    # 尝试通过事件回复发送群消息
+                    await event.reply(content, group_id=group_id_str)
+                    return event.plain_result("群消息发送成功")
+                except Exception as e:
+                    pass
             
-            # 创建群消息会话
+            # 尝试使用平台特定的发送方式
+            if hasattr(event, 'bot') and hasattr(event.bot, 'send_group_msg'):
+                try:
+                    # 直接使用aiocqhttp的API发送群消息
+                    await event.bot.send_group_msg(group_id=group_id_str, message=content)
+                    return event.plain_result("群消息发送成功")
+                except Exception as e:
+                    return event.plain_result(f"群消息发送失败：{str(e)}")
+            
+            # 尝试通过上下文发送
+            if hasattr(self.context, 'send_group_message'):
+                try:
+                    success = await self.context.send_group_message(group_id_str, content)
+                    if success:
+                        return event.plain_result("群消息发送成功")
+                    else:
+                        return event.plain_result("群消息发送失败：上下文发送失败")
+                except Exception as e:
+                    return event.plain_result(f"群消息发送失败：{str(e)}")
+            
+            # 最后的尝试：使用MessageSession
             session = MessageSession(
                 platform_name="qq",
                 message_type=MessageType.GROUP_MESSAGE,
                 session_id=group_id_str
             )
-            
-            # 发送消息
+            message_chain = MessageChain()
+            message_chain.chain = [Plain(content)]
             success = await self.context.send_message(session, message_chain)
             if success:
                 return event.plain_result("群消息发送成功")
             else:
-                return event.plain_result("群消息发送失败：未知错误")
+                return event.plain_result("群消息发送失败：会话发送失败")
                 
         except Exception as e:
             # 捕获所有异常并返回详细错误信息
-            error_msg = f"群消息发送失败：{str(e)}"
-            return event.plain_result(error_msg)
+            return event.plain_result(f"群消息发送失败：{str(e)}")
 
     @filter.llm_tool(name="message_to_admin")
     async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
