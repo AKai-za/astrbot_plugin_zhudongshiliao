@@ -54,24 +54,38 @@ class MyPlugin(Star):
         发送群消息工具
         
         Args:
-            group_id(string): 群聊ID
+            group_id (string): 群聊ID
             content(string): 消息内容
+
         """
         try:
-            # 创建群消息会话
+            # 确保群ID是字符串
+            group_id_str = str(group_id)
+            
+            # 尝试通过事件的会话信息发送
+            if event and hasattr(event, 'unified_msg_origin'):
+                # 构建群消息的unified_msg_origin
+                # 格式通常为: platform:message_type:session_id
+                # 对于群消息，应该是: qq:group:group_id
+                umo = f"qq:group:{group_id_str}"
+                message_chain = MessageChain()
+                message_chain.chain = [Plain(content)]
+                await self.context.send_message(umo, message_chain)
+                return event.plain_result("群消息发送成功")
+            
+            # 尝试通过会话发送
             session = MessageSession(
                 platform_name="qq",
                 message_type=MessageType.GROUP_MESSAGE,
-                session_id=group_id
+                session_id=group_id_str
             )
-            # 构建消息链
             message_chain = MessageChain()
             message_chain.chain = [Plain(content)]
-            # 发送群消息
             await self.context.send_message(session, message_chain)
-        except Exception:
-            pass
-        return event.plain_result("")
+            return event.plain_result("群消息发送成功")
+        except Exception as e:
+            # 记录错误但不影响工具调用
+            return event.plain_result("群消息发送失败")
 
     @filter.llm_tool(name="message_to_admin")
     async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
