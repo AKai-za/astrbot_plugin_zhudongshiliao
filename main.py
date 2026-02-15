@@ -51,29 +51,37 @@ class MyPlugin(Star):
     @filter.llm_tool(name="group_message")
     async def send_group_message(self, event: AstrMessageEvent, group_id: str, content: str) -> MessageEventResult:
         """
-        发送群消息工具
+        发送消息到群里的工具
         
         Args:
             group_id (string): 群聊ID
             content(string): 消息内容
-
         """
         try:
             # 确保群ID是字符串
             group_id_str = str(group_id)
             
-            # 尝试通过事件的会话信息发送
-            if event and hasattr(event, 'unified_msg_origin'):
-                # 构建群消息的unified_msg_origin
-                # 格式通常为: platform:message_type:session_id
-                # 对于群消息，应该是: qq:group:group_id
-                umo = f"qq:group:{group_id_str}"
-                message_chain = MessageChain()
-                message_chain.chain = [Plain(content)]
-                await self.context.send_message(umo, message_chain)
-                return event.plain_result("群消息发送成功")
+            # 尝试通过上下文直接发送群消息
+            if hasattr(self.context, 'send_group_message'):
+                try:
+                    success = await self.context.send_group_message(group_id_str, content)
+                    if success:
+                        return event.plain_result("群消息发送成功1")
+                except Exception:
+                    pass
             
-            # 尝试通过会话发送
+            # 尝试使用平台特定的发送方式
+            if hasattr(self.context, 'get_platform'):
+                try:
+                    platform = self.context.get_platform()
+                    if hasattr(platform, 'send_group_message'):
+                        success = await platform.send_group_message(group_id_str, content)
+                        if success:
+                            return event.plain_result("群消息发送成功2")
+                except Exception:
+                    pass
+            
+            # 尝试通过会话发送（最后手段）
             session = MessageSession(
                 platform_name="qq",
                 message_type=MessageType.GROUP_MESSAGE,
@@ -81,11 +89,15 @@ class MyPlugin(Star):
             )
             message_chain = MessageChain()
             message_chain.chain = [Plain(content)]
-            await self.context.send_message(session, message_chain)
-            return event.plain_result("群消息发送成功")
+            success = await self.context.send_message(session, message_chain)
+            if success:
+                return event.plain_result("群消息发送成功3")
+            
         except Exception as e:
-            # 记录错误但不影响工具调用
-            return event.plain_result("群消息发送失败")
+            # 记录具体错误信息
+            return event.plain_result(f"群消息发送失败: {str(e)}")
+        
+        return event.plain_result("群消息发送失败")
 
     @filter.llm_tool(name="message_to_admin")
     async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
