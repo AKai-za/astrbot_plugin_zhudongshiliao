@@ -1,5 +1,6 @@
-8name: astrbot_plugin_zhudongshiliao
-version: "0.0.8"
+name: astrbot_plugin_zhudongshiliao
+version: "0.0。8"
 author: "引灯续昼"
+desc: "自动私聊插件，提供私聊功能作为工具供大模型调用。"
 description: "自动私聊插件，提供私聊功能作为工具供大模型调用。"
 repository: "https://github.com/HLC2757808353/astrbot_plugin_zhudongshiliao"
