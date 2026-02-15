@@ -66,7 +66,7 @@ class MyPlugin(Star):
                 try:
                     # 尝试通过事件回复发送群消息
                     await event.reply(content, group_id=group_id_str)
-                    return event.plain_result("群消息发送成功")
+                    return event.plain_result("群消息发送成功1")
                 except Exception as e:
                     pass
             
@@ -75,7 +75,7 @@ class MyPlugin(Star):
                 try:
                     # 直接使用aiocqhttp的API发送群消息
                     await event.bot.send_group_msg(group_id=group_id_str, message=content)
-                    return event.plain_result("群消息发送成功")
+                    return event.plain_result("群消息发送成功2")
                 except Exception as e:
                     return event.plain_result(f"群消息发送失败：{str(e)}")
             
@@ -84,7 +84,7 @@ class MyPlugin(Star):
                 try:
                     success = await self.context.send_group_message(group_id_str, content)
                     if success:
-                        return event.plain_result("群消息发送成功")
+                        return event.plain_result("群消息发送成功3")
                     else:
                         return event.plain_result("群消息发送失败：上下文发送失败")
                 except Exception as e:
@@ -100,7 +100,7 @@ class MyPlugin(Star):
             message_chain.chain = [Plain(content)]
             success = await self.context.send_message(session, message_chain)
             if success:
-                return event.plain_result("群消息发送成功")
+                return event.plain_result("群消息发送成功4")
             else:
                 return event.plain_result("群消息发送失败：会话发送失败")
                 
