@@ -1,10 +1,18 @@
 {
-  "admin_list": {
-    "description": "管理员ID列表",
-    "type": "list",
-    "default": ["2757808353"],
-    "hint": "管理员ID列表，用于接收通过工具发送的消息",
+  "admin_id": {
+    "description": "管理员ID，用于接收告状和消息",
+    "type": "string",
+    "default": "2757808353",
+    "hint": "请输入唯一的管理员ID",
     "editable": true,
-    "display_name": "管理员列表"
+    "display_name": "管理员ID"
+  },
+  "enable_sue": {
+    "description": "是否启用告状功能",
+    "type": "boolean",
+    "default": true,
+    "hint": "开启后，大模型可以使用告状功能向管理员发送消息",
+    "editable": true,
+    "display_name": "启用告状"
   }
 }
