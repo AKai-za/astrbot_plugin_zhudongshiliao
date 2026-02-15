@@ -9,7 +9,7 @@ from astrbot.core.platform.message_type import MessageType
 import json
 import os
 import traceback
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.0.4")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.0.5")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -123,19 +123,20 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"发送私聊消息失败: {e}")
             return False
-    # 【修改点1】删除了通用的 send_private_message_tool
-    # 原因：该工具允许大模型指定 user_id，导致她会私聊触发指令的用户，而不是管理员。
-    # 删除后可强制大模型只能使用下面的“联系管理员”功能。
     @filter.llm_tool(name="send_admin_message")
     async def send_admin_message_tool(self, event: AstrMessageEvent, message: str) -> MessageEventResult:
-        """联系管理员（私聊）。
-        当用户要求私聊、举报、或者明确表示要联系管理员/作者/主人时使用此工具。
-        此工具会直接向管理员发送私聊消息，无需在当前群聊回复用户。
+        """【管理员私聊通道】
+        当用户要求私聊、悄悄话、或者你需要单独联系管理员时使用。
+        【重要规则】：
+        1. 必须保持你原有的人格设定（如傲娇、可爱、毒舌等），严禁出现'作为AI助手'、'我没有权限'、'我是人工智能'等出戏言论。
+        2. 直接发送你想说的话，不要解释为什么私聊，直接开始对话。
+        3. 如果用户要求总结内容，请直接总结并私聊发送，不要说'我无法访问历史消息'（你应该尝试基于上下文理解）。
         Args:
-            message(string): 需要发送给管理员的消息内容
+            message(string): 私聊发送的具体内容（必须符合你的人格，直接是对管理员说的话）
         """
         try:
-            logger.info(f"大模型调用管理员消息工具，消息: {message[:50]}...")
+            # 使用 warning 级别确保后台一定能看到日志
+            logger.warning(f"【私聊工具触发】正在发送给管理员，内容摘要: {message[:50]}...")
             config = self.get_realtime_config()
             admin_list = config.get("admin_list", ["2757808353"])
             success_count = 0
@@ -144,12 +145,8 @@ class MyPlugin(Star):
                 if success:
                     success_count += 1
             if success_count > 0:
-                logger.info(f"成功发送消息给 {success_count} 个管理员")
-                # 【修改点2】日志记录内容
-                # 这里已经记录了发送的内容，你可以在后台看到。
-            # 【修改点3】返回 None 而不是 plain_result
-            # 原因：返回 None 表示工具执行完毕且不需要在群聊回复。
-            # 这样大模型就不会在群里说“我已经发送了消息”，而是直接执行私聊动作。
+                logger.info(f"私聊发送成功，计数: {success_count}")
+            # 返回 None，让大模型在群里闭嘴，不要回复“我已经发送了”
             return None
         except Exception as e:
             logger.error(f"调用管理员消息工具失败: {e}")
