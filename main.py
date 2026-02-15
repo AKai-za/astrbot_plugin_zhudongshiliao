@@ -47,7 +47,32 @@ class MyPlugin(Star):
         await self.send_private_message(user_id, content, event)
         event.stop_event()
         return event.plain_result("")
-    
+
+    @filter.llm_tool(name="group_message")
+    async def send_group_message(self, event: AstrMessageEvent, group_id: str, content: str) -> MessageEventResult:
+        """
+        发送群消息工具
+        
+        Args:
+            group_id(string): 群聊ID
+            content(string): 消息内容
+        """
+        try:
+            # 创建群消息会话
+            session = MessageSession(
+                platform_name="qq",
+                message_type=MessageType.GROUP_MESSAGE,
+                session_id=group_id
+            )
+            # 构建消息链
+            message_chain = MessageChain()
+            message_chain.chain = [Plain(content)]
+            # 发送群消息
+            await self.context.send_message(session, message_chain)
+        except Exception:
+            pass
+        return event.plain_result("")
+
     @filter.llm_tool(name="message_to_admin")
     async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
         """
