@@ -1,6 +1,7 @@
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter
+from astrbot.api.event import MessageChain
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
@@ -29,7 +30,8 @@ class MyPlugin(Star):
             message_type=MessageType.FRIEND_MESSAGE,
             session_id=user_id_str
         )
-        await self.context.send_message(session, message)
+        message_chain = MessageChain().message(message)
+        await self.context.send_message(session, message_chain)
     
     @filter.llm_tool(name="private_message")
     async def private_message(self, event: AstrMessageEvent, user_id: str, content: str) -> MessageEventResult:
@@ -41,6 +43,7 @@ class MyPlugin(Star):
             content(string): 消息内容
         """
         await self.send_private_message(user_id, content, event)
+        event.stop_event()
         return event.plain_result("")
     
     @filter.llm_tool(name="message_to_admin")
@@ -53,6 +56,7 @@ class MyPlugin(Star):
         """
         admin_id = self.context.get_config().get("admin_id", "2757808353")
         await self.send_private_message(admin_id, content, event)
+        event.stop_event()
         return event.plain_result("")
     
     @filter.llm_tool(name="sue_to_admin")
@@ -67,6 +71,7 @@ class MyPlugin(Star):
         if config.get("enable_sue", True):
             admin_id = config.get("admin_id", "2757808353")
             await self.send_private_message(admin_id, f"【告状】\n{content}", event)
+        event.stop_event()
         return event.plain_result("")
     
     @filter.llm_tool(name="get_admin_info")
