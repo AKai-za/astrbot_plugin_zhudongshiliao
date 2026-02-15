@@ -6,11 +6,10 @@ from astrbot.api.message_components import Plain
 from astrbot.api.event import MessageChain
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
-from astrbot.core.event.filter import llm_tool
 import json
 import os
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.0.4")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.0.5")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -124,7 +123,6 @@ class MyPlugin(Star):
             logger.error(f"发送私聊消息失败: {e}")
             return False
     
-    @llm_tool(name="send_to_creator")
     async def send_to_creator(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
         config = self.get_realtime_config()
         admin_id = config.get("admin_id", "2757808353")
@@ -134,7 +132,6 @@ class MyPlugin(Star):
         else:
             return event.plain_result("消息发送失败")
     
-    @llm_tool(name="sue_to_creator")
     async def sue_to_creator(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
         config = self.get_realtime_config()
         if not config.get("enable_sue", True):
