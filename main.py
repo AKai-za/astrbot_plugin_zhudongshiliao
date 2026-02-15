@@ -61,43 +61,28 @@ class MyPlugin(Star):
             # 确保群ID是字符串
             group_id_str = str(group_id)
             
-            # 尝试通过上下文直接发送群消息
-            if hasattr(self.context, 'send_group_message'):
-                try:
-                    success = await self.context.send_group_message(group_id_str, content)
-                    if success:
-                        return event.plain_result("群消息发送成功1")
-                except Exception:
-                    pass
+            # 构建消息链
+            message_chain = MessageChain()
+            message_chain.chain = [Plain(content)]
             
-            # 尝试使用平台特定的发送方式
-            if hasattr(self.context, 'get_platform'):
-                try:
-                    platform = self.context.get_platform()
-                    if hasattr(platform, 'send_group_message'):
-                        success = await platform.send_group_message(group_id_str, content)
-                        if success:
-                            return event.plain_result("群消息发送成功2")
-                except Exception:
-                    pass
-            
-            # 尝试通过会话发送（最后手段）
+            # 创建群消息会话
             session = MessageSession(
                 platform_name="qq",
                 message_type=MessageType.GROUP_MESSAGE,
                 session_id=group_id_str
             )
-            message_chain = MessageChain()
-            message_chain.chain = [Plain(content)]
+            
+            # 发送消息
             success = await self.context.send_message(session, message_chain)
             if success:
-                return event.plain_result("群消息发送成功3")
-            
+                return event.plain_result("群消息发送成功")
+            else:
+                return event.plain_result("群消息发送失败：未知错误")
+                
         except Exception as e:
-            # 记录具体错误信息
-            return event.plain_result(f"群消息发送失败: {str(e)}")
-        
-        return event.plain_result("群消息发送失败")
+            # 捕获所有异常并返回详细错误信息
+            error_msg = f"群消息发送失败：{str(e)}"
+            return event.plain_result(error_msg)
 
     @filter.llm_tool(name="message_to_admin")
     async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
