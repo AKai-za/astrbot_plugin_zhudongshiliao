@@ -64,14 +64,14 @@ class MyPlugin(Star):
                 return {
                     "admin_id": "2757808353",
                     "enable_sue": True,
-                    "custom_error_message": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+                    "custom_error_message": "请有人告诉引灯续昼我的AI出现了问题",
                     "enable_custom_error": True
                 }
             # 确保所有必要的配置项都存在
             default_config = {
                 "admin_id": "2757808353",
                 "enable_sue": True,
-                "custom_error_message": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+                "custom_error_message": "请有人告诉引灯续昼我的AI出现了问题",
                 "enable_custom_error": True
             }
             # 合并默认配置和实际配置
@@ -84,7 +84,7 @@ class MyPlugin(Star):
             return {
                 "admin_id": "2757808353",
                 "enable_sue": True,
-                "custom_error_message": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+                "custom_error_message": "请有人告诉引灯续昼我的AI出现了问题",
                 "enable_custom_error": True
             }
     
