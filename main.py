@@ -6,7 +6,7 @@ from astrbot.api.message_components import Plain
 from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.2.0")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "2.0.0")
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -47,7 +47,49 @@ class MyPlugin(Star):
         await self.send_private_message(user_id, content, event)
         event.stop_event()
         return event.plain_result("")
+    
+    @filter.llm_tool(name="message_to_admin")
+    async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
+        """
+        向管理员发送消息工具
+        
+        Args:
+            content(string): 消息内容
+        """
+        admin_id = self.context.get_config().get("admin_id", "2757808353")
+        await self.send_private_message(admin_id, content, event)
+        event.stop_event()
+        return event.plain_result("")
+    
+    @filter.llm_tool(name="sue_to_admin")
+    async def sue_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
+        """
+        告状工具 - 向管理员发送告状消息
+        
+        Args:
+            content(string): 告状内容，建议包含以下信息：
+                1. 发生的群聊（如果是群聊中发生的）
+                2. 具体是谁说的坏话
+                3. 说了什么具体内容
 
+        """
+        config = self.context.get_config()
+        if config.get("enable_sue", True):
+            admin_id = config.get("admin_id", "2757808353")
+            await self.send_private_message(admin_id, f"【告状】\n{content}", event)
+        event.stop_event()
+        return event.plain_result("")
+    
+    @filter.llm_tool(name="get_admin_info")
+    async def get_admin_info(self, event: AstrMessageEvent) -> MessageEventResult:
+        """
+        获取管理员信息工具
+        """
+        config = self.context.get_config()
+        admin_id = config.get("admin_id", "2757808353")
+        enable_sue = config.get("enable_sue", True)
+        return event.plain_result(f"管理员ID: {admin_id}\n告状功能: {'开启' if enable_sue else '关闭'}")
+    
     @filter.llm_tool(name="group_message")
     async def send_group_message(self, event: AstrMessageEvent, group_id: str, content: str) -> MessageEventResult:
         """
@@ -71,44 +113,61 @@ class MyPlugin(Star):
         except Exception as e:
             # 捕获所有异常并返回详细错误信息
             return event.plain_result(f"群消息发送失败：{str(e)}")
-
-    @filter.llm_tool(name="message_to_admin")
-    async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
+    
+    def _replace_error_variables(self, message, error_message="", error_code=""):
         """
-        向管理员发送消息工具
+        替换错误消息中的变量
         
         Args:
-            content(string): 消息内容
+            message: 原始消息
+            error_message: 系统错误消息
+            error_code: 错误代码
+            
+        Returns:
+            替换变量后的消息
         """
-        admin_id = self.context.get_config().get("admin_id", "2757808353")
-        await self.send_private_message(admin_id, content, event)
-        event.stop_event()
-        return event.plain_result("")
+        message = message.replace("{error_message}", error_message)
+        message = message.replace("{error_code}", error_code)
+        return message
     
-    @filter.llm_tool(name="sue_to_admin")
-    async def sue_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
+    @filter.on_llm_response()
+    async def on_llm_response(self, event: AstrMessageEvent, resp):
         """
-        告状工具 - 向管理员发送告状消息
+        LLM 响应事件钩子，用于处理错误
+        """
+        # 检查是否启用了自定义报错
+        config = self.context.get_config()
+        if not config.get("enable_custom_error", True):
+            return
         
-        Args:
-            content(string): 告状内容(要说清楚发生的地点以及具体是谁)
-        """
-        config = self.context.get_config()
-        if config.get("enable_sue", True):
-            admin_id = config.get("admin_id", "2757808353")
-            await self.send_private_message(admin_id, f"【告状】\n{content}", event)
-        event.stop_event()
-        return event.plain_result("")
-    
-    @filter.llm_tool(name="get_admin_info")
-    async def get_admin_info(self, event: AstrMessageEvent) -> MessageEventResult:
-        """
-        获取管理员信息工具
-        """
-        config = self.context.get_config()
-        admin_id = config.get("admin_id", "2757808353")
-        enable_sue = config.get("enable_sue", True)
-        return event.plain_result(f"管理员ID: {admin_id}\n告状功能: {'开启' if enable_sue else '关闭'}")
+        # 检查是否是错误响应
+        if hasattr(resp, 'role') and resp.role == 'err':
+            # 获取自定义报错消息
+            custom_error = config.get("custom_error_message", "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。")
+            
+            # 提取错误信息
+            error_message = ""
+            error_code = ""
+            
+            # 尝试从响应中提取错误信息
+            if hasattr(resp, 'completion_text') and resp.completion_text:
+                error_message = resp.completion_text
+            elif hasattr(resp, 'result_chain') and resp.result_chain:
+                try:
+                    error_message = resp.result_chain.get_plain_text()
+                except Exception:
+                    pass
+            
+            # 替换变量
+            custom_error = self._replace_error_variables(custom_error, error_message, error_code)
+            
+            # 创建错误回复
+            if hasattr(event, 'reply'):
+                await event.reply(custom_error)
+            
+            # 停止事件传播，防止系统默认报错消息
+            if hasattr(event, 'stop_event'):
+                event.stop_event()
     
     async def terminate(self):
         pass
