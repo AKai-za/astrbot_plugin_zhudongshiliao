@@ -114,6 +114,8 @@ class MyPlugin(Star):
             # 捕获所有异常并返回详细错误信息
             return event.plain_result(f"群消息发送失败：{str(e)}")
     
+
+
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         """
@@ -141,33 +143,29 @@ class MyPlugin(Star):
                 for comp in result.chain:
                     if hasattr(comp, 'text') and comp.text:
                         text = comp.text
-                        if "LLM 响应错误" in text or "All chat models failed" in text:
+                        if any(keyword in text for keyword in [
+                            "错误", "失败", "error", "failed", "Error", "Failed",
+                            "LLM 响应错误", "All chat models failed", "AuthenticationError",
+                            "API key is invalid", "Error code:"
+                        ]):
                             is_error = True
                             error_message = text
-                            break
-                    elif hasattr(comp, 'content') and comp.content:
-                        content = comp.content
-                        if "LLM 响应错误" in content or "All chat models failed" in content:
-                            is_error = True
-                            error_message = content
                             break
             elif hasattr(result, 'text') and result.text:
                 # 检查文本结果
                 text = result.text
-                if "LLM 响应错误" in text or "All chat models failed" in text:
+                if any(keyword in text for keyword in [
+                    "错误", "失败", "error", "failed", "Error", "Failed",
+                    "LLM 响应错误", "All chat models failed", "AuthenticationError",
+                    "API key is invalid", "Error code:"
+                ]):
                     is_error = True
                     error_message = text
-            elif hasattr(result, 'message') and result.message:
-                # 检查消息结果
-                message = result.message
-                if "LLM 响应错误" in message or "All chat models failed" in message:
-                    is_error = True
-                    error_message = message
             
             # 如果是错误消息，替换为自定义报错
             if is_error:
-                # 获取自定义报错消息
-                custom_error = config.get("custom_error_message", "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。")
+                # 获取自定义报错消息（优先使用WebUI配置）
+                custom_error = config.get("custom_error_message", "我的ai好像出错了喵，有好心人帮我联系一下我的创造者吗")
                 
                 # 提取错误代码
                 error_code = ""
@@ -186,11 +184,6 @@ class MyPlugin(Star):
                     result.chain = [Plain(custom_error)]
                 elif hasattr(result, 'text'):
                     result.text = custom_error
-                elif hasattr(result, 'message'):
-                    result.message = custom_error
-                
-                # 确保结果被更新
-                event.set_result(result)
                 
         except Exception as e:
             # 捕获所有异常，确保钩子不会崩溃
