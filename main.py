@@ -114,56 +114,10 @@ class MyPlugin(Star):
             # 捕获所有异常并返回详细错误信息
             return event.plain_result(f"群消息发送失败：{str(e)}")
     
-    @filter.on_llm_request()
-    async def on_llm_request(self, event: AstrMessageEvent, req):
-        """
-        LLM 请求事件钩子，用于预处理请求
-        """
-        pass
-
-    @filter.on_llm_response()
-    async def on_llm_response(self, event: AstrMessageEvent, resp):
-        """
-        LLM 响应事件钩子，用于处理错误
-        """
-        # 检查是否启用了自定义报错
-        config = self.context.get_config()
-        if not config.get("enable_custom_error", True):
-            return
-        
-        # 检查是否是错误响应
-        if hasattr(resp, 'role') and resp.role == 'err':
-            # 获取自定义报错消息
-            custom_error = config.get("custom_error_message", "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。1")
-            
-            # 提取错误信息
-            error_message = ""
-            error_code = ""
-            
-            # 尝试从响应中提取错误信息
-            if hasattr(resp, 'completion_text') and resp.completion_text:
-                error_message = resp.completion_text
-            elif hasattr(resp, 'result_chain') and resp.result_chain:
-                try:
-                    error_message = resp.result_chain.get_plain_text()
-                except Exception:
-                    pass
-            
-            # 替换变量
-            custom_error = self._replace_error_variables(custom_error, error_message, error_code)
-            
-            # 创建错误回复
-            if hasattr(event, 'reply'):
-                await event.reply(custom_error)
-            
-            # 停止事件传播，防止系统默认报错消息
-            if hasattr(event, 'stop_event'):
-                event.stop_event()
-
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         """
-        发送消息前的事件钩子，用于处理最终的消息
+        发送消息前的事件钩子，用于拦截并修改错误消息
         """
         # 检查是否启用了自定义报错
         config = self.context.get_config()
@@ -177,32 +131,54 @@ class MyPlugin(Star):
         
         # 检查结果是否包含错误信息
         try:
-            chain = result.chain
-            if chain:
-                # 检查消息链中是否包含错误信息
-                plain_text = ""
-                for comp in chain:
+            # 获取消息链的纯文本内容
+            plain_text = ""
+            if hasattr(result, 'chain') and result.chain:
+                for comp in result.chain:
                     if hasattr(comp, 'text'):
                         plain_text += comp.text
                     elif hasattr(comp, 'content'):
                         plain_text += comp.content
+            elif hasattr(result, 'text'):
+                plain_text = result.text
+            
+            # 检查是否是系统默认的错误消息
+            error_keywords = [
+                "LLM 响应错误", 
+                "request error", 
+                "All chat models failed",
+                "AuthenticationError",
+                "Error code:"
+            ]
+            
+            has_error = any(keyword in plain_text for keyword in error_keywords)
+            
+            if has_error:
+                # 获取自定义报错消息
+                custom_error = config.get("custom_error_message", "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。")
                 
-                # 检查是否是系统默认的错误消息
-                if "LLM 响应错误" in plain_text or "request error" in plain_text:
-                    # 获取自定义报错消息
-                    custom_error = config.get("custom_error_message", "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。2")
-                    
-                    # 提取错误信息
-                    error_message = plain_text
-                    error_code = ""
-                    
-                    # 替换变量
-                    custom_error = self._replace_error_variables(custom_error, error_message, error_code)
-                    
-                    # 替换结果链
-                    from astrbot.api.message_components import Plain
-                    result.chain = [Plain(custom_error)]
-        except Exception:
+                # 提取错误信息
+                error_message = plain_text
+                error_code = ""
+                
+                # 尝试提取错误代码
+                import re
+                match = re.search(r'Error code: (\d+)', plain_text)
+                if match:
+                    error_code = match.group(1)
+                
+                # 替换变量
+                custom_error = self._replace_error_variables(custom_error, error_message, error_code)
+                
+                # 替换结果
+                from astrbot.api.message_components import Plain
+                result.chain = [Plain(custom_error)]
+                
+                # 停止事件传播
+                if hasattr(event, 'stop_event'):
+                    event.stop_event()
+        except Exception as e:
+            # 捕获所有异常，确保钩子不会崩溃
             pass
     async def terminate(self):
         pass
