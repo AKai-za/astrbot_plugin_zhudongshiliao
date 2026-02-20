@@ -8,8 +8,9 @@ from astrbot.core.platform.message_type import MessageType
 
 @register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "2.0.0")
 class MyPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config=None):
         super().__init__(context)
+        self.config = config
     
     async def send_private_message(self, user_id, message, event=None):
         # 发送私聊消息
@@ -56,8 +57,8 @@ class MyPlugin(Star):
             dict: 最新的配置字典
         """
         try:
-            # 直接获取配置，确保每次都获取最新的
-            config = self.context.get_config()
+            # 使用构造函数传入的插件配置
+            config = self.config
             # 验证配置完整性
             if not isinstance(config, dict):
                 # 如果配置不是字典，返回默认配置
