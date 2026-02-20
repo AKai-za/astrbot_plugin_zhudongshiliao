@@ -129,54 +129,69 @@ class MyPlugin(Star):
         if not result:
             return
         
-        # 检查结果是否包含错误信息
+        # 检查并修改错误消息
         try:
-            # 获取消息链的纯文本内容
-            plain_text = ""
+            # 检查结果是否是错误消息
+            is_error = False
+            error_message = ""
+            
+            # 检查不同格式的结果对象
             if hasattr(result, 'chain') and result.chain:
+                # 检查消息链
                 for comp in result.chain:
-                    if hasattr(comp, 'text'):
-                        plain_text += comp.text
-                    elif hasattr(comp, 'content'):
-                        plain_text += comp.content
-            elif hasattr(result, 'text'):
-                plain_text = result.text
+                    if hasattr(comp, 'text') and comp.text:
+                        text = comp.text
+                        if "LLM 响应错误" in text or "All chat models failed" in text:
+                            is_error = True
+                            error_message = text
+                            break
+                    elif hasattr(comp, 'content') and comp.content:
+                        content = comp.content
+                        if "LLM 响应错误" in content or "All chat models failed" in content:
+                            is_error = True
+                            error_message = content
+                            break
+            elif hasattr(result, 'text') and result.text:
+                # 检查文本结果
+                text = result.text
+                if "LLM 响应错误" in text or "All chat models failed" in text:
+                    is_error = True
+                    error_message = text
+            elif hasattr(result, 'message') and result.message:
+                # 检查消息结果
+                message = result.message
+                if "LLM 响应错误" in message or "All chat models failed" in message:
+                    is_error = True
+                    error_message = message
             
-            # 检查是否是系统默认的错误消息
-            error_keywords = [
-                "LLM 响应错误", 
-                "request error", 
-                "All chat models failed",
-                "AuthenticationError",
-                "Error code:"
-            ]
-            
-            has_error = any(keyword in plain_text for keyword in error_keywords)
-            
-            if has_error:
+            # 如果是错误消息，替换为自定义报错
+            if is_error:
                 # 获取自定义报错消息
                 custom_error = config.get("custom_error_message", "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。")
                 
-                # 提取错误信息
-                error_message = plain_text
+                # 提取错误代码
                 error_code = ""
-                
-                # 尝试提取错误代码
                 import re
-                match = re.search(r'Error code: (\d+)', plain_text)
+                match = re.search(r'Error code: (\d+)', error_message)
                 if match:
                     error_code = match.group(1)
                 
                 # 替换变量
-                custom_error = self._replace_error_variables(custom_error, error_message, error_code)
+                custom_error = custom_error.replace("{error_message}", error_message)
+                custom_error = custom_error.replace("{error_code}", error_code)
                 
-                # 替换结果
+                # 替换结果的消息链
                 from astrbot.api.message_components import Plain
-                result.chain = [Plain(custom_error)]
+                if hasattr(result, 'chain'):
+                    result.chain = [Plain(custom_error)]
+                elif hasattr(result, 'text'):
+                    result.text = custom_error
+                elif hasattr(result, 'message'):
+                    result.message = custom_error
                 
-                # 停止事件传播
-                if hasattr(event, 'stop_event'):
-                    event.stop_event()
+                # 确保结果被更新
+                event.set_result(result)
+                
         except Exception as e:
             # 捕获所有异常，确保钩子不会崩溃
             pass
