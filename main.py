@@ -48,6 +48,46 @@ class MyPlugin(Star):
         event.stop_event()
         return event.plain_result("")
     
+    def _get_config(self):
+        """
+        获取最新配置，确保配置同步
+        
+        Returns:
+            dict: 最新的配置字典
+        """
+        try:
+            # 直接获取配置，确保每次都获取最新的
+            config = self.context.get_config()
+            # 验证配置完整性
+            if not isinstance(config, dict):
+                # 如果配置不是字典，返回默认配置
+                return {
+                    "admin_id": "2757808353",
+                    "enable_sue": True,
+                    "custom_error_message": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+                    "enable_custom_error": True
+                }
+            # 确保所有必要的配置项都存在
+            default_config = {
+                "admin_id": "2757808353",
+                "enable_sue": True,
+                "custom_error_message": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+                "enable_custom_error": True
+            }
+            # 合并默认配置和实际配置
+            for key, value in default_config.items():
+                if key not in config:
+                    config[key] = value
+            return config
+        except Exception:
+            # 发生异常时返回默认配置
+            return {
+                "admin_id": "2757808353",
+                "enable_sue": True,
+                "custom_error_message": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+                "enable_custom_error": True
+            }
+    
     @filter.llm_tool(name="message_to_admin")
     async def message_to_admin(self, event: AstrMessageEvent, content: str) -> MessageEventResult:
         """
@@ -55,8 +95,11 @@ class MyPlugin(Star):
         
         Args:
             content(string): 消息内容
+
         """
-        admin_id = self.context.get_config().get("admin_id", "2757808353")
+        # 获取最新配置
+        config = self._get_config()
+        admin_id = config.get("admin_id", "2757808353")
         await self.send_private_message(admin_id, content, event)
         event.stop_event()
         return event.plain_result("")
@@ -71,9 +114,11 @@ class MyPlugin(Star):
                 1. 发生的群聊（如果是群聊中发生的）
                 2. 具体是谁说的坏话
                 3. 说了什么具体内容
-
+                4. 你的感受如何
+                例如："在群聊(123456789)中，用户张三说我很笨，什么都不会，我感到很委屈"
         """
-        config = self.context.get_config()
+        # 获取最新配置
+        config = self._get_config()
         if config.get("enable_sue", True):
             admin_id = config.get("admin_id", "2757808353")
             await self.send_private_message(admin_id, f"【告状】\n{content}", event)
@@ -85,7 +130,8 @@ class MyPlugin(Star):
         """
         获取管理员信息工具
         """
-        config = self.context.get_config()
+        # 获取最新配置
+        config = self._get_config()
         admin_id = config.get("admin_id", "2757808353")
         enable_sue = config.get("enable_sue", True)
         return event.plain_result(f"管理员ID: {admin_id}\n告状功能: {'开启' if enable_sue else '关闭'}")
@@ -114,15 +160,29 @@ class MyPlugin(Star):
             # 捕获所有异常并返回详细错误信息
             return event.plain_result(f"群消息发送失败：{str(e)}")
     
-
-
+    def _replace_error_variables(self, message, error_message="", error_code=""):
+        """
+        替换错误消息中的变量
+        
+        Args:
+            message: 原始消息
+            error_message: 系统错误消息
+            error_code: 错误代码
+            
+        Returns:
+            替换变量后的消息
+        """
+        message = message.replace("{error_message}", error_message)
+        message = message.replace("{error_code}", error_code)
+        return message
+    
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         """
         发送消息前的事件钩子，用于拦截并修改错误消息
         """
-        # 检查是否启用了自定义报错
-        config = self.context.get_config()
+        # 获取最新配置，确保实时同步
+        config = self._get_config()
         if not config.get("enable_custom_error", True):
             return
         
@@ -164,8 +224,8 @@ class MyPlugin(Star):
             
             # 如果是错误消息，替换为自定义报错
             if is_error:
-                # 获取自定义报错消息（优先使用WebUI配置）
-                custom_error = config.get("custom_error_message", "我的ai好像出错了喵，有好心人帮我联系一下我的创造者吗")
+                # 获取最新自定义报错消息
+                custom_error = config.get("custom_error_message", "请有人告诉引灯续昼我的AI出现了问题")
                 
                 # 提取错误代码
                 error_code = ""
@@ -175,8 +235,7 @@ class MyPlugin(Star):
                     error_code = match.group(1)
                 
                 # 替换变量
-                custom_error = custom_error.replace("{error_message}", error_message)
-                custom_error = custom_error.replace("{error_code}", error_code)
+                custom_error = self._replace_error_variables(custom_error, error_message, error_code)
                 
                 # 替换结果的消息链
                 from astrbot.api.message_components import Plain
@@ -188,5 +247,6 @@ class MyPlugin(Star):
         except Exception as e:
             # 捕获所有异常，确保钩子不会崩溃
             pass
+    
     async def terminate(self):
         pass

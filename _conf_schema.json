@@ -18,7 +18,7 @@
   "custom_error_message": {
     "description": "自定义报错消息",
     "type": "text",
-    "default": "抱歉，我遇到了一些问题，暂时无法完成这个操作。请稍后再试或联系管理员。",
+    "default": "请有人告诉引灯续昼我的AI出现了问题",
     "hint": "当AI出现错误时，将使用此消息回复用户。支持使用变量：{error_message}（系统错误消息）、{error_code}（错误代码）",
     "editable": true,
     "display_name": "自定义报错消息"
