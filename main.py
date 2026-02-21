@@ -15,10 +15,17 @@ class MyPlugin(Star):
     async def send_private_message(self, user_id, message, event=None):
         # 发送私聊消息
         user_id_str = str(user_id)
-        # 尝试通过事件回复发送
-        if event and hasattr(event, 'reply'):
-            await event.reply(message, private=True)
-            return
+        # 尝试通过事件回复发送（仅当目标用户是当前事件发送者时）
+        if event and hasattr(event, 'reply') and hasattr(event, 'user_id'):
+            # 检查目标用户是否是当前事件发送者
+            try:
+                event_user_id = str(event.user_id)
+                if event_user_id == user_id_str:
+                    await event.reply(message, private=True)
+                    return
+            except Exception:
+                # 如果获取user_id失败，继续使用其他发送方式
+                pass
         # 尝试通过上下文发送
         if hasattr(self.context, 'send_private_message'):
             await self.context.send_private_message(user_id_str, message)
