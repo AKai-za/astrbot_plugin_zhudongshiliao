@@ -2,7 +2,7 @@
   "admin_id": {
     "description": "管理员ID，用于接收告状和消息",
     "type": "string",
-    "default": "2757808353",
+    "default": "123456789",
     "hint": "请输入唯一的管理员ID",
     "editable": true,
     "display_name": "管理员ID"
