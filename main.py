@@ -18,7 +18,7 @@ DEFAULT_CONFIG = {
     "enable_custom_error": True
 }
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.3.8")
+@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.3.9")
 class MyPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -256,59 +256,85 @@ class MyPlugin(Star):
             ERROR_KEYWORDS = [
                 "错误", "失败", "error", "failed", "Error", "Failed",
                 "LLM 响应错误", "All chat models failed", "AuthenticationError",
-                "API key is invalid", "Error code:"
+                "API key is invalid", "Error code:", "Exception", "exception"
             ]
             
             # 检查不同格式的结果对象
             if hasattr(result, 'chain') and result.chain:
                 # 检查消息链
+                logger.debug(f"检查消息链，长度: {len(result.chain)}")
                 for comp in result.chain:
                     if hasattr(comp, 'text') and comp.text:
                         text = comp.text
+                        logger.debug(f"消息链组件文本: {text[:100]}...")
                         # 改进的错误识别逻辑
                         # 1. 检查是否包含错误关键词
-                        if any(keyword in text for keyword in ERROR_KEYWORDS):
+                        has_error_keyword = any(keyword in text for keyword in ERROR_KEYWORDS)
+                        logger.debug(f"是否包含错误关键词: {has_error_keyword}")
+                        
+                        if has_error_keyword:
                             # 2. 检查上下文约束，避免普通文本被误识别
                             # 例如，错误消息通常包含更多技术术语或特定格式
                             has_technical_terms = any(term in text for term in [
-                                "API", "code", "模型", "响应", "请求", 
-                                "timeout", "connection", "invalid", "token", "key"
+                                "API", "code", "响应", "请求", 
+                                "timeout", "connection", "invalid", "token", "key",
+                                "timeout", "error code", "exception", "failed to", "cannot", "unable"
                             ])
+                            logger.debug(f"是否包含技术术语: {has_technical_terms}")
+                            
                             # 3. 检查文本长度和结构
                             is_likely_error = False
                             if has_technical_terms:
                                 is_likely_error = True
                             elif "Error code:" in text:
                                 is_likely_error = True
-                            elif len(text) > 20 and ("错误" in text or "error" in text.lower()):
-                                # 较长的包含错误关键词的文本更可能是错误消息
+                            elif "Exception" in text or "exception" in text:
                                 is_likely_error = True
+                            elif len(text) > 50 and ("错误" in text or "error" in text.lower()) and any(term in text for term in ["API", "code", "请求", "响应"]):
+                                # 较长的包含错误关键词和技术术语的文本更可能是错误消息
+                                is_likely_error = True
+                            
+                            logger.debug(f"是否可能是错误消息: {is_likely_error}")
                             
                             if is_likely_error:
                                 is_error = True
                                 error_message = text
+                                logger.debug(f"识别为错误消息: {error_message[:100]}...")
                                 break
             elif hasattr(result, 'text') and result.text:
                 # 检查文本结果
                 text = result.text
+                logger.debug(f"检查文本结果: {text[:100]}...")
                 # 改进的错误识别逻辑
-                if any(keyword in text for keyword in ERROR_KEYWORDS):
+                has_error_keyword = any(keyword in text for keyword in ERROR_KEYWORDS)
+                logger.debug(f"是否包含错误关键词: {has_error_keyword}")
+                
+                if has_error_keyword:
                     # 同样的上下文约束检查
                     has_technical_terms = any(term in text for term in [
-                        "API", "code", "模型", "响应", "请求", 
-                        "timeout", "connection", "invalid", "token", "key"
+                        "API", "code", "响应", "请求", 
+                        "timeout", "connection", "invalid", "token", "key",
+                        "timeout", "error code", "exception", "failed to", "cannot", "unable"
                     ])
+                    logger.debug(f"是否包含技术术语: {has_technical_terms}")
+                    
                     is_likely_error = False
                     if has_technical_terms:
                         is_likely_error = True
                     elif "Error code:" in text:
                         is_likely_error = True
-                    elif len(text) > 20 and ("错误" in text or "error" in text.lower()):
+                    elif "Exception" in text or "exception" in text:
                         is_likely_error = True
+                    elif len(text) > 50 and ("错误" in text or "error" in text.lower()) and any(term in text for term in ["API", "code", "请求", "响应"]):
+                        # 较长的包含错误关键词和技术术语的文本更可能是错误消息
+                        is_likely_error = True
+                    
+                    logger.debug(f"是否可能是错误消息: {is_likely_error}")
                     
                     if is_likely_error:
                         is_error = True
                         error_message = text
+                        logger.debug(f"识别为错误消息: {error_message[:100]}...")
             
             # 如果是错误消息，替换为自定义报错
             if is_error:
