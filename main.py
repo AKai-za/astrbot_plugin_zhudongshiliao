@@ -48,6 +48,7 @@ class MyPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
         self.config = config
+        self._cached_config = None
         # 频率限制存储
         self.message_rate_limit = defaultdict(list)  # {source_id: [timestamp1, timestamp2, ...]}
         self.rate_limit_window = 60  # 时间窗口（秒）
@@ -58,33 +59,46 @@ class MyPlugin(Star):
 
     def _get_config(self):
         """
-        获取最新配置，确保配置同步
+        获取最新配置，带有缓存机制以提升高频调用时的性能
         """
-        # 使用深拷贝，彻底切断与全局默认配置的任何嵌套引用联系
+        # 如果缓存已存在，直接返回（O(1) 复杂度，零拷贝开销）
+        if self._cached_config is not None:
+            return self._cached_config
+
+        # 首次调用时：进行安全的深拷贝和合并
         base_config = copy.deepcopy(DEFAULT_CONFIG)
         try:
             config = self.config
             if not isinstance(config, dict):
                 logger.warning("插件配置格式错误或为空，已回退至默认配置")
+                self._cached_config = base_config
                 return base_config
 
             base_config.update(config)
+
+            # 写入缓存
+            self._cached_config = base_config
             return base_config
+
         except Exception as e:
             logger.warning(f"获取配置时发生异常: {str(e)}，已回退至默认配置")
+            self._cached_config = base_config
             return base_config
 
     def _get_source_id(self, event) -> str:
         """
         统一提取事件的调用来源 ID
+        优先使用 AstrBot 标准方法 get_sender_id()，降级使用 user_id 属性兜底
         """
         source_id = UNKNOWN_SOURCE
         if event:
             try:
-                if hasattr(event, 'user_id'):
-                    source_id = str(event.user_id)
-                elif hasattr(event, 'get_sender_id'):
+                # 优先级 1：框架标准方法（最稳妥的跨平台获取方式）
+                if hasattr(event, 'get_sender_id') and callable(event.get_sender_id):
                     source_id = str(event.get_sender_id())
+                # 优先级 2：底层属性兜底（兼容极老版本的事件对象）
+                elif hasattr(event, 'user_id'):
+                    source_id = str(event.user_id)
             except Exception as e:
                 logger.warning(f"无法动态获取事件来源ID：{str(e)}")
         return source_id
@@ -291,8 +305,15 @@ class MyPlugin(Star):
         try:
             await self.context.send_message(session, message_chain)
             return event.plain_result("群消息发送成功")
-        except Exception:
-            logger.exception("群消息底层发送接口调用失败")
+        except Exception as e:
+            # 丰富日志上下文：记录平台、强转后的ID以及原始输入类型，以便快速定位适配器兼容性瓶颈
+            logger.exception(
+                f"群消息底层发送接口调用失败 | "
+                f"当前路由平台: {platform_id} | "
+                f"目标群ID(str): '{group_id_str}' | "
+                f"原始入参类型: {type(group_id)} | "
+                f"异常信息: {e}"
+            )
             return event.plain_result("群消息发送失败：系统暂时无法发送消息，请稍后再试")
 
     def _replace_error_variables(self, message, error_message="", error_code=""):
@@ -349,8 +370,12 @@ class MyPlugin(Star):
                 if hasattr(result, 'text'):
                     result.text = custom_error
 
-        except Exception:
-            logger.exception("错误消息替换拦截器内部发生致命异常")
+        except (AttributeError, TypeError) as e:
+            # 精准捕获：AstrBot 框架消息结构变动，或组件文本类型不符导致的拼接失败
+            logger.exception(f"错误拦截器解析消息结构失败（属性或类型错误）: {e}")
+        except re.error as e:
+            # 精准捕获：正则表达式引擎执行异常
+            logger.exception(f"错误拦截器执行正则匹配异常: {e}")
 
     async def terminate(self):
         pass
