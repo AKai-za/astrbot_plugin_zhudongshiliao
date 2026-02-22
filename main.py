@@ -1,5 +1,5 @@
 from astrbot.api.event import AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star
 from astrbot.api.event import filter
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
@@ -19,7 +19,19 @@ DEFAULT_CONFIG = {
     "default_platform": "qq"
 }
 
-@register("astrbot_plugin_zhudongshiliao", "引灯续昼", "自动私聊插件，提供私聊功能作为工具供大模型调用。", "0.3.9")
+# 预编译所有错误匹配的正则表达式，提升高频拦截钩子的性能
+COMPILED_ERROR_PATTERNS = [
+    re.compile(r"^(?:\[AstrBot\]\s*)?LLM\s*响应错误", re.IGNORECASE),
+    re.compile(r"^(?:\[AstrBot\]\s*)?All chat models failed", re.IGNORECASE),
+    re.compile(r"^Error code:\s*\d+\s*-", re.IGNORECASE),
+    re.compile(r"AuthenticationError", re.IGNORECASE),
+    re.compile(r"API key is invalid", re.IGNORECASE),
+    re.compile(r"^(?:Exception|Traceback).*?(?:most recent call last)", re.IGNORECASE),
+]
+
+# 单独预编译提取错误码的正则
+COMPILED_ERROR_CODE_PATTERN = re.compile(r'Error code:\s*(\d+)', re.IGNORECASE)
+
 class MyPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -113,13 +125,16 @@ class MyPlugin(Star):
 
         # 尝试通过事件回复发送（仅当目标用户是当前事件发送者时）
         if event and hasattr(event, 'reply') and hasattr(event, 'user_id'):
-            try:
-                if str(event.user_id) == target_id_str:
+            if str(event.user_id) == target_id_str:
+                try:
                     await event.reply(message, private=True)
                     return True
-            except Exception as e:
-                logger.warning(f"获取事件用户ID失败：{str(e)}")
-                pass
+                except (AttributeError, NotImplementedError) as e:
+                    # 预期内的回退：底层适配器不支持 reply 特性，记录 debug 即可，继续走后续发送逻辑
+                    logger.debug(f"当前平台不支持 event.reply 快捷回复，准备回退到常规发送接口: {str(e)}")
+                except Exception as e:
+                    # 预期外的真实网络或框架错误：保留完整堆栈（exc_info=True 会自动打印 Traceback）
+                    logger.warning("通过 event.reply 发送私聊消息时发生异常", exc_info=True)
 
         # 尝试通过上下文发送
         if hasattr(self.context, 'send_private_message'):
@@ -132,14 +147,13 @@ class MyPlugin(Star):
         platform_id = config.get("default_platform")
         # 2. 尝试从事件上下文中动态提取真实的平台 ID
         if event:
-            # 方案 A: 尝试调用标准方法
             if hasattr(event, 'get_platform_id'):
                 try:
                     ext_platform = event.get_platform_id()
                     if ext_platform:
                         platform_id = ext_platform
-                except Exception as e:
-                    logger.debug(f"调用 get_platform_id 失败: {str(e)}")
+                except (AttributeError, NotImplementedError) as e:
+                    logger.debug(f"当前事件未实现 get_platform_id，将尝试备用方案: {str(e)}")
 
             # 方案 B: 备用提取路径 (如果 AstrBot 底层适配器暴露了 adapter 属性)
             elif hasattr(event, 'adapter') and hasattr(event.adapter, 'platform_name'):
@@ -273,31 +287,52 @@ class MyPlugin(Star):
         """
         发送消息到群里的工具
         """
-        # 1. 提取真实的调用来源 ID
         source_id = "unknown_source"
-        if event:
-            try:
-                if hasattr(event, 'user_id'):
-                    source_id = str(event.user_id)
-            except Exception:
-                pass
+        if event and hasattr(event, 'user_id'):
+            source_id = str(event.user_id)
 
-        # 2. 针对【调用来源】进行限流
-        if not self._check_rate_limit(f"group_{source_id}"):
+        # 检查频率限制
+        limit_key = f"group_{source_id}"
+        if not self._check_rate_limit(limit_key):
             logger.warning(f"群消息频率限制：调用来源 {source_id} 触发频率过高")
             return event.plain_result("群消息发送失败：您调用工具的频率过高，请稍后再试。")
 
         group_id_str = str(group_id)
         logger.info(f"发送群消息：来源 [{source_id}] -> 目标群 [{group_id_str}]，消息长度 {len(content)}")
 
+        # 1. 跨平台兼容：动态获取平台 ID
+        config = self._get_config()
+        platform_id = config.get("default_platform")
+
+        if event:
+            if hasattr(event, 'get_platform_id'):
+                try:
+                    ext_platform = event.get_platform_id()
+                    if ext_platform:
+                        platform_id = ext_platform
+                except Exception as e:
+                    logger.debug(f"调用 get_platform_id 失败: {str(e)}")
+            elif hasattr(event, 'adapter') and hasattr(event.adapter, 'platform_name'):
+                if event.adapter.platform_name:
+                    platform_id = event.adapter.platform_name
+
+        # 2. 构造跨平台的 MessageSession
+        session = MessageSession(
+            platform_name=platform_id,
+            message_type=MessageType.GROUP_MESSAGE,  # 使用群聊类型
+            session_id=group_id_str
+        )
+
+        message_chain = MessageChain()
+        message_chain.chain = [Plain(content)]
+
+        # 3. 通过统一的上下文接口发送
         try:
-            if hasattr(event, 'bot') and hasattr(event.bot, 'send_group_msg'):
-                await event.bot.send_group_msg(group_id=group_id_str, message=content)
-                return event.plain_result("群消息发送成功")
-            else:
-                return event.plain_result("群消息发送失败：不支持的平台或方法")
-        except Exception as e:
-            logger.error(f"群消息发送失败：{str(e)}")
+            await self.context.send_message(session, message_chain)
+            return event.plain_result("群消息发送成功")
+        except Exception:
+            # 记录完整堆栈，方便日后排查底层适配器抛出的具体网络或序列化错误
+            logger.exception("群消息底层发送接口调用失败")
             return event.plain_result("群消息发送失败：系统暂时无法发送消息，请稍后再试")
     
     def _replace_error_variables(self, message, error_message="", error_code=""):
@@ -343,27 +378,16 @@ class MyPlugin(Star):
             if not text_to_check:
                 return
 
-            # 2. 严格的正则匹配规则：告别模糊搜索，只匹配真正的系统级报错特征
-            # 使用 ^ 锚定开头，或匹配极度特殊的字符串结构
-            ERROR_PATTERNS = [
-                r"^(?:\[AstrBot\]\s*)?LLM\s*响应错误",  # AstrBot 框架自身报错
-                r"^(?:\[AstrBot\]\s*)?All chat models failed",  # 模型全挂了
-                r"^Error code:\s*\d+\s*-",  # OpenAI 等标准 API 报错 (通常开头是 Error code: 400 - {...)
-                r"AuthenticationError",  # 极度特殊的异常名
-                r"API key is invalid",  # 极度特殊的异常描述
-                r"^(?:Exception|Traceback).*?(?:most recent call last)",  # Python 原生异常堆栈特征
-            ]
-
             is_error = False
             error_code = ""
 
-            for pattern in ERROR_PATTERNS:
+            for pattern in COMPILED_ERROR_PATTERNS:
                 # 使用正则表达式进行严格检测
                 if re.search(pattern, text_to_check, re.IGNORECASE):
                     is_error = True
 
                     # 如果匹配到了错误，顺便尝试精准提取错误码（如果有的话）
-                    code_match = re.search(r'Error code:\s*(\d+)', text_to_check, re.IGNORECASE)
+                    code_match = COMPILED_ERROR_CODE_PATTERN.search(text_to_check)
                     if code_match:
                         error_code = code_match.group(1)
 
@@ -384,9 +408,10 @@ class MyPlugin(Star):
                 if hasattr(result, 'text'):
                     result.text = custom_error
 
-        except Exception as e:
-            # 记录异常，确保事件钩子自身崩溃不会影响系统主流程
-            logger.error(f"错误消息替换拦截器内部异常：{str(e)}")
+
+        except Exception:
+            # 使用 logger.exception 会自动附带完整的 Traceback 异常栈信息
+            logger.exception("错误消息替换拦截器内部发生致命异常")
     
     async def terminate(self):
         pass
