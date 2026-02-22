@@ -104,8 +104,7 @@ class MyPlugin(Star):
                 logger.warning(f"无法获取事件来源ID：{str(e)}")
 
         # 2. 针对【调用来源】进行限流，而不是目标对象
-        limit_key = f"user_{source_id}"
-        if not self._check_rate_limit(f"pm_{limit_key}"):
+        if not self._check_rate_limit(f"user_{source_id}"):
             logger.warning(f"私聊频率限制：调用来源 {source_id} 触发频率过高")
             return False
 
@@ -241,7 +240,7 @@ class MyPlugin(Star):
                 logger.warning("尝试告状失败：未配置 admin_id")
                 return event.plain_result("告状失败：系统未配置管理员联系方式。")
 
-            success = await self.send_private_message(admin_id, content, event)
+            success = await self.send_private_message(admin_id, f"【告状】\n{content}", event)
             event.stop_event()
             if not success:
                 return event.plain_result("发送失败：您的发送频率过高，触发了系统的防刷屏保护。")
@@ -284,8 +283,7 @@ class MyPlugin(Star):
                 pass
 
         # 2. 针对【调用来源】进行限流
-        limit_key = f"group_{source_id}"
-        if not self._check_rate_limit(f"group_{limit_key}"):
+        if not self._check_rate_limit(f"group_{source_id}"):
             logger.warning(f"群消息频率限制：调用来源 {source_id} 触发频率过高")
             return event.plain_result("群消息发送失败：您调用工具的频率过高，请稍后再试。")
 
